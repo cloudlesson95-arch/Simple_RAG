@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
 
@@ -66,10 +67,27 @@ if __name__ == "__main__":
 
     test_question = "What is group of cats called?"
     print(f"\nSearching for: {test_question}")
-
     results = retriever.invoke(test_question)
 
-    for i, doc in enumerate(results):
-        print(f"Result {i+1} (Source: {doc.metadata['source']})")
-        print(doc.page_content)
-        print("\n")
+    llm = ChatGoogleGenerativeAI(
+        model = "gemini-2.5-flash",
+        temperature=0,
+        google_api_key=os.getenv("GOOGLE_API_KEY")
+    )
+
+    context_text = "\n---\n".join([doc.page_content for doc in results])
+
+    prompt = f"""You are a helpful assistant. Answer the question based ONLY on the provided context.
+    If the anwer is not in the context, say "I don't know based on the context."
+    
+    Context:
+    {context_text}
+
+    Question: {test_question}
+
+    Answer:"""
+
+    print("\nSending to LLM")
+
+    response = llm.invoke(prompt)
+    print(response.content)
