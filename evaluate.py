@@ -67,6 +67,11 @@ def run_evaluation():
         else:
             print("\tFAIL: Expected context NOT found in Top-4")
             print(f"\tExpected to find: {q['expected_context'][:100]}...")
+            print("\t----- What was retrieved(first 100 chars): -----")
+            for j, doc in enumerate(results):
+                clean_chunk = doc.page_content[:100].replace('\n', ' ')
+                print(f"\tChunk {j+1} (Source {doc.metadata['source']}): {clean_chunk}...")
+            print("\t----------")
 
         precision = (successful_retrievals/len(questions)) * 100
         print(f"\nFinal score: Precision@4 - {precision:.1f}%")
