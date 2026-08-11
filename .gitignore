@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .venv/
 .plan.md
+chroma_db/*

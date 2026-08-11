@@ -1,9 +1,15 @@
 import os
+from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_chroma import Chroma
+
+load_dotenv()
 
 def load_and_chunk_documents():
     data_dir = "data"
-    files = ["fictional_text.txt", "cat-facts.txt", "pydantic.llms-full.txt"]
+    files = ["fictional_text.txt", "cat-facts.txt"]
+    #files = ["fictional_text.txt", "cat-facts.txt", "pydantic.llms-full.txt"] #pydantic can use a lot of limits. Use only for final checks
 
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=500,
@@ -27,9 +33,43 @@ def load_and_chunk_documents():
     print(f"Total chunks created: {len(all_chunks)}")
     return all_chunks
 
+def create_or_load_vectorstore(chunks):
+    """Embeds the chunks and stores them in ChromaDB"""
+
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model = "models/gemini-embedding-001",
+        google_api_key=os.getenv("GOOGLE_API_KEY")
+    )
+    
+    persist_directory = "./chroma_db"
+
+    if os.path.exists(persist_directory):
+        print(f"Loading existing database from {persist_directory}...")
+        vectorstore = Chroma(persist_directory=persist_directory, embedding_function=embeddings)
+    else:
+        print(f"Creating new database at {persist_directory}. This might take a while...")
+        vectorstore = Chroma.from_documents(
+            documents=chunks,
+            embedding=embeddings,
+            persist_directory=persist_directory
+        )
+
+    return vectorstore
+
+
 if __name__ == "__main__":
     chunks = load_and_chunk_documents()
 
-    print("\nFirst chunk:")
-    print("Metadata:", chunks[0].metadata)
-    print("Content:", repr(chunks[0].page_content[:100] + "..."))
+    vectorstore = create_or_load_vectorstore(chunks)
+
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+
+    test_question = "What is group of cats called?"
+    print(f"\nSearching for: {test_question}")
+
+    results = retriever.invoke(test_question)
+
+    for i, doc in enumerate(results):
+        print(f"Result {i+1} (Source: {doc.metadata['source']})")
+        print(doc.page_content)
+        print("\n")
