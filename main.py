@@ -4,13 +4,15 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
 from langchain_google_genai import ChatGoogleGenerativeAI
+#for local embedding
+from langchain_huggingface import HuggingFaceEmbeddings #pip install sentence-transformers langchain-huggingface #~80MB model + torch
 
 load_dotenv()
 
 def load_and_chunk_documents():
     data_dir = "data"
-    files = ["fictional_text.txt", "cat-facts.txt"]
-    #files = ["fictional_text.txt", "cat-facts.txt", "pydantic.llms-full.txt"] #pydantic can use a lot of limits. Use only for final checks
+    # files = ["fictional_text.txt", "cat-facts.txt"]
+    files = ["fictional_text.txt", "cat-facts.txt", "pydantic.llms-full.txt"] #pydantic can use a lot of limits. Use only for final checks
 
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=500,
@@ -37,10 +39,15 @@ def load_and_chunk_documents():
 def create_or_load_vectorstore(chunks):
     """Embeds the chunks and stores them in ChromaDB"""
 
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model = "models/gemini-embedding-001",
-        google_api_key=os.getenv("GOOGLE_API_KEY")
-    )
+    # #gemini model through API
+    # embeddings = GoogleGenerativeAIEmbeddings(
+    #     model = "models/gemini-embedding-001",
+    #     google_api_key=os.getenv("GOOGLE_API_KEY")
+    # )
+
+    #local embedding model
+    #make sure to remove 'chroma_db' folder on switch to avoid different embedding error 
+    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     
     persist_directory = "./chroma_db"
 
@@ -65,7 +72,7 @@ if __name__ == "__main__":
 
     retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
-    test_question = "What is group of cats called?"
+    test_question = "What is a group of cats called?"
     print(f"\nSearching for: {test_question}")
     results = retriever.invoke(test_question)
 
