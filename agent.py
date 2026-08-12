@@ -46,7 +46,7 @@ def load_vectorstore():
     return vectorstore
 
 
-def answer_question(question, router, vectorstore, answer_llm):
+def answer_question(question, router, vectorstore, answer_llm, max_retries=2):
     decision = router.invoke(question)
     print(f"[Router]: '{decision.source}' ({decision.reasoning})")
 
@@ -55,26 +55,45 @@ def answer_question(question, router, vectorstore, answer_llm):
         response = answer_llm.invoke(question)
         return response.content
 
-    retriever = vectorstore.as_retriever(
-        search_kwargs={
-            "k": 4,
-            "filter": {"source": decision.source}
-        }
-    )
-    results = retriever.invoke(question)
-    context_text = "\n---\n".join([doc.page_content for doc in results])
+    def retrieve_and_answer(query):
+        retriever = vectorstore.as_retriever(
+            search_kwargs={
+                "k": 4,
+                "filter": {"source": decision.source}
+            }
+        )
+        results = retriever.invoke(query)
+        context_text = "\n---\n".join([doc.page_content for doc in results])
 
-    prompt = f"""Answer ONLY based on the provided context.
-    If the answer is not in the context, say "I don't know."
+        prompt = f"""Answer ONLY based on the provided context.
+        If the answer is not in the context, say "I don't know."
 
-    Context:
-    {context_text}
+        Context:
+        {context_text}
 
-    Question: {question}
-    Answer:"""
+        Question: {query}
+        Answer:"""
+        return answer_llm.invoke(prompt).content
 
-    response = answer_llm.invoke(prompt)
-    return response.content
+    current_query = question
+    answer = retrieve_and_answer(current_query)
+    
+    #Self-Correction loop
+    for attempt in range(max_retries):
+        if "I don't know" in answer:
+            print(f"[Agent] Attempt {attempt + 1}/{max_retries}: answer insufficient, rephrasing...")
+
+            rephrase_prompt = f"""The user asked: "{current_query}"
+            A search returned no useful results. 
+            Rephrase this question using different keywords.
+            Return ONLY the rephrased question."""
+
+            current_query = answer_llm.invoke(rephrase_prompt).content.strip()
+            print(f"[Agent] Rephrased query: '{current_query}'")
+
+            answer = retrieve_and_answer(current_query)
+
+    return answer
 
 if __name__ == "__main__":
     router = setup_router()
@@ -84,7 +103,8 @@ if __name__ == "__main__":
         "What is a group of cats called?",
         "How do I configure caching in Pydantic AI?",
         "What was the city council's vote count on the parking garage proposal?",
-        "What is 2345 * 849?"
+        "What is 2345 * 849?",
+        "How many visitors were in the town of Oakhaven in September?" #expected "I don't know"
     ]
 
     answer_llm = ChatGroq(
