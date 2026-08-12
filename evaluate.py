@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
 
@@ -42,40 +43,53 @@ def run_evaluation():
     print("Loading vector database")
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
 
     questions = load_questions("baseline/question.txt")
     print(f"Loaded {len(questions)} test questions.\n")
 
     successful_retrievals = 0
 
+    judge_llm = ChatGoogleGenerativeAI(
+        model = "gemini-2.5-flash",
+        temperature = 0,
+        google_api_key = os.getenv("GOOGLE_API_KEY")
+    )
+    
     for i,q in enumerate(questions):
         print(f"[{i+1}/{len(questions)}] Testing: '{q['query']}'")
 
         results = retriever.invoke(q["query"])
+        
+        context_text = "\n---\n".join([doc.page_content for doc in results])
 
-        found_in_top_k = False
-        for doc in results:
-            #A simple substring match if the expected context is inside the chunk content. Won't always work perfectly
-            if q["expected_context"].lower() in doc.page_content.lower():
-                found_in_top_k = True
-                break
+        judge_prompt = f"""You are an impartial judge evaluating a Search engine.
+        The user asked: '{q['query']}'
+        The system retrieved this context:
+        {context_text}
 
-        if found_in_top_k:
-            print("\tSUCCESS: Expected context found in Top-4")
+        Does the retrieved context contain the information necessary to answer the question?
+        Reply ONLY with "YES" or "NO". Do not explain."""
+
+        response = judge_llm.invoke(judge_prompt)
+        decision = response.content.strip().upper()
+
+        if "YES" in decision:
+            print("\tSUCCESS: LLM says YES")
             successful_retrievals +=1
         else:
-            print("\tFAIL: Expected context NOT found in Top-4")
+            print("\tFAIL: LLM says NO")
             print(f"\tExpected to find: {q['expected_context'][:100]}...")
             print("\t----- What was retrieved(first 100 chars): -----")
             for j, doc in enumerate(results):
-                clean_chunk = doc.page_content[:100].replace('\n', ' ')
+                clean_chunk = repr(doc.page_content[:100].replace('\n', ' ').replace('\r', ''))
                 print(f"\tChunk {j+1} (Source {doc.metadata['source']}): {clean_chunk}...")
             print("\t----------")
 
-        precision = (successful_retrievals/len(questions)) * 100
-        print(f"\nFinal score: Precision@4 - {precision:.1f}%")
-        print(f"({successful_retrievals} out of {len(questions)} retrieved correctly)")
+
+    precision = (successful_retrievals/len(questions)) * 100
+    print(f"\nFinal score: Precision@4 - {precision:.1f}%")
+    print(f"({successful_retrievals} out of {len(questions)} retrieved correctly)")
 
 if __name__ == "__main__":
     run_evaluation()
