@@ -8,9 +8,16 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
 
-def load_questions(filepath):
-    """Parse the question.txt file into a list of dictionaries"""
-
+def load_questions(filepath: str) -> list[dict]:
+    """Parse the question.txt file into a list of dictionaries.
+    
+    Args:
+        filepath: Path to the questions file.
+        
+    Returns:
+        list[dict]: List of question dictionaries with 'query', 'expected_context', 
+                   and 'expected_answer' keys.
+    """
     questions = []
     with open(filepath, "r", encoding="utf-8") as f:
         lines = f.readlines()

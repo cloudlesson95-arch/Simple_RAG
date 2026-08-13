@@ -27,19 +27,41 @@ class RouteDecision(BaseModel):
     )
 
 def setup_router():
+    """Setup the router LLM for determining data sources.
+    
+    Returns:
+        The router LLM configured with structured output for RouteDecision.
+    """    
     llm = create_llm(AGENT_LLM_MODEL)
 
     router_llm = llm.with_structured_output(RouteDecision)
     return router_llm
 
-def load_vectorstore():
+def load_vectorstore() -> Chroma:
+    """Load the existing vector database from disk.
+    
+    Returns:
+        Chroma: The loaded vector store instance.
+    """    
     print("Loading vector database")
     embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_LOCAL_MODEL)
     vectorstore = Chroma(persist_directory=CHROMA_PERSIST_DIR, embedding_function=embeddings)
     return vectorstore
 
 
-def answer_question(question, router, vectorstore, answer_llm, max_retries=MAX_RETRIES):
+def answer_question(question: str, router, vectorstore, answer_llm, max_retries: int = MAX_RETRIES) -> str:
+    """Answer a user question using RAG with self-correction.
+    
+    Args:
+        question: The user's question to answer.
+        router: The router LLM for determining data source.
+        vectorstore: The vector store for retrieval.
+        answer_llm: The LLM for generating answers.
+        max_retries: Maximum number of rephrasing attempts (default: from config).
+        
+    Returns:
+        str: The answer to the user's question.
+    """
     decision = router.invoke(question)
     print(f"[Router]: '{decision.source}' ({decision.reasoning})")
 

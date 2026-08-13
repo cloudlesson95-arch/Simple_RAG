@@ -11,7 +11,12 @@ from langchain_huggingface import HuggingFaceEmbeddings #pip install sentence-tr
 
 load_dotenv()
 
-def load_and_chunk_documents():
+def load_and_chunk_documents() -> list:
+    """Load and chunk documents from the data directory
+
+    Returns:
+        list: A list of chunked documents ready for embedding.
+    """
     # files = ["fictional_text.txt", "cat-facts.txt"]
     files = ["fictional_text.txt", "cat-facts.txt", "pydantic.llms-full.txt"] #pydantic can use a lot of limits. Use only for final checks
 
@@ -37,9 +42,15 @@ def load_and_chunk_documents():
     print(f"Total chunks created: {len(all_chunks)}")
     return all_chunks
 
-def create_or_load_vectorstore(chunks):
-    """Embeds the chunks and stores them in ChromaDB"""
-
+def create_or_load_vectorstore(chunks: list) -> Chroma:
+    """Embeds the chunks and stores them in ChromaDB.
+    
+    Args:
+        chunks: List of documents to embed and store.
+        
+    Returns:
+        Chroma: A Chroma vector store instance containing the embedded chunks.
+    """
     # #gemini model through API
     # embeddings = GoogleGenerativeAIEmbeddings(
     #     model = EMBEDDING_MODEL,
