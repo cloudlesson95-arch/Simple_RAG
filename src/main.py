@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
-from config import CHUNK_SIZE, CHUNK_OVERLAP, K_RETRIEVAL, EMBEDDING_MODEL, EMBEDDING_LOCAL_MODEL, MAIN_LLM_MODEL, CHROMA_PERSIST_DIR, DATA_DIR
-from utils import create_llm
+from src.config import CHUNK_SIZE, CHUNK_OVERLAP, K_RETRIEVAL, EMBEDDING_MODEL, EMBEDDING_LOCAL_MODEL, MAIN_LLM_MODEL, CHROMA_PERSIST_DIR, DATA_DIR
+from src.utils import create_llm
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma

@@ -1,7 +1,7 @@
 import os
 
 def create_llm(provider: str):
-    """Factory function to create LLM instances based on the porivder name"""
+    """Factory function to create LLM instances based on the provider name"""
     if provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(

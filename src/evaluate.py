@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
-from config import K_EVALUATION, EVAL_LLM_MODEL, EMBEDDING_LOCAL_MODEL, CHROMA_PERSIST_DIR
-from utils import create_llm
+from src.config import K_EVALUATION, EVAL_LLM_MODEL, EMBEDDING_LOCAL_MODEL, CHROMA_PERSIST_DIR
+from src.utils import create_llm
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_google_genai import ChatGoogleGenerativeAI

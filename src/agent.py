@@ -2,8 +2,8 @@ import os
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from typing import Literal
-from config import K_RETRIEVAL, MAX_RETRIES, EMBEDDING_LOCAL_MODEL, AGENT_LLM_MODEL, CHROMA_PERSIST_DIR
-from utils import create_llm
+from src.config import K_RETRIEVAL, MAX_RETRIES, EMBEDDING_LOCAL_MODEL, AGENT_LLM_MODEL, CHROMA_PERSIST_DIR
+from src.utils import create_llm
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq #back-up llm
 from langchain_huggingface import HuggingFaceEmbeddings
