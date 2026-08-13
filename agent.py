@@ -2,6 +2,8 @@ import os
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from typing import Literal
+from config import K_RETRIEVAL, MAX_RETRIES, EMBEDDING_LOCAL_MODEL, AGENT_LLM_MODEL, CHROMA_PERSIST_DIR
+from utils import create_llm
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq #back-up llm
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -25,28 +27,19 @@ class RouteDecision(BaseModel):
     )
 
 def setup_router():
-    # llm = ChatGoogleGenerativeAI(
-    #     model = "gemini-2.5-flash",
-    #     temperature = 0,
-    #     google_api_key = os.getenv("GOOGLE_API_KEY")
-    # )
-    llm = ChatGroq(
-	model = "llama-3.1-8b-instant",
-	temperature = 0,
-	groq_api_key = os.getenv("GROK_API_KEY")
-    )
+    llm = create_llm(AGENT_LLM_MODEL)
 
     router_llm = llm.with_structured_output(RouteDecision)
     return router_llm
 
 def load_vectorstore():
     print("Loading vector database")
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-    vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
+    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_LOCAL_MODEL)
+    vectorstore = Chroma(persist_directory=CHROMA_PERSIST_DIR, embedding_function=embeddings)
     return vectorstore
 
 
-def answer_question(question, router, vectorstore, answer_llm, max_retries=2):
+def answer_question(question, router, vectorstore, answer_llm, max_retries=MAX_RETRIES):
     decision = router.invoke(question)
     print(f"[Router]: '{decision.source}' ({decision.reasoning})")
 
@@ -58,7 +51,7 @@ def answer_question(question, router, vectorstore, answer_llm, max_retries=2):
     def retrieve_and_answer(query):
         retriever = vectorstore.as_retriever(
             search_kwargs={
-                "k": 4,
+                "k": K_RETRIEVAL,
                 "filter": {"source": decision.source}
             }
         )
@@ -107,11 +100,7 @@ if __name__ == "__main__":
         "How many visitors were in the town of Oakhaven in September?" #expected "I don't know"
     ]
 
-    answer_llm = ChatGroq(
-        model = "llama-3.1-8b-instant",
-        temperature = 0,
-        groq_api_key = os.getenv("GROK_API_KEY")
-    )
+    answer_llm = create_llm(AGENT_LLM_MODEL)
 
     print("--- Testing the Router --- \n")
     for q in test_questions:

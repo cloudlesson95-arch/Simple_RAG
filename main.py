@@ -1,5 +1,7 @@
 import os
 from dotenv import load_dotenv
+from config import CHUNK_SIZE, CHUNK_OVERLAP, K_RETRIEVAL, EMBEDDING_MODEL, EMBEDDING_LOCAL_MODEL, MAIN_LLM_MODEL, CHROMA_PERSIST_DIR, DATA_DIR
+from utils import create_llm
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
@@ -10,20 +12,19 @@ from langchain_huggingface import HuggingFaceEmbeddings #pip install sentence-tr
 load_dotenv()
 
 def load_and_chunk_documents():
-    data_dir = "data"
     # files = ["fictional_text.txt", "cat-facts.txt"]
     files = ["fictional_text.txt", "cat-facts.txt", "pydantic.llms-full.txt"] #pydantic can use a lot of limits. Use only for final checks
 
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=50,
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
         length_function=len,
     )
 
     all_chunks = []
 
     for filename in files:
-        filepath = os.path.join(data_dir, filename)
+        filepath = os.path.join(DATA_DIR, filename)
 
         with open(filepath, "r", encoding="utf-8") as f:
             text = f.read()
@@ -41,15 +42,15 @@ def create_or_load_vectorstore(chunks):
 
     # #gemini model through API
     # embeddings = GoogleGenerativeAIEmbeddings(
-    #     model = "models/gemini-embedding-001",
+    #     model = EMBEDDING_MODEL,
     #     google_api_key=os.getenv("GOOGLE_API_KEY")
     # )
 
     #local embedding model
     #make sure to remove 'chroma_db' folder on switch to avoid different embedding error 
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_LOCAL_MODEL)
     
-    persist_directory = "./chroma_db"
+    persist_directory = CHROMA_PERSIST_DIR
 
     if os.path.exists(persist_directory):
         print(f"Loading existing database from {persist_directory}...")
@@ -70,17 +71,13 @@ if __name__ == "__main__":
 
     vectorstore = create_or_load_vectorstore(chunks)
 
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+    retriever = vectorstore.as_retriever(search_kwargs={"k": K_RETRIEVAL})
 
     test_question = "What is a group of cats called?"
     print(f"\nSearching for: {test_question}")
     results = retriever.invoke(test_question)
 
-    llm = ChatGoogleGenerativeAI(
-        model = "gemini-2.5-flash",
-        temperature=0,
-        google_api_key=os.getenv("GOOGLE_API_KEY")
-    )
+    llm = create_llm(MAIN_LLM_MODEL)
 
     context_text = "\n---\n".join([doc.page_content for doc in results])
 

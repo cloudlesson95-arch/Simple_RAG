@@ -1,5 +1,7 @@
 import os
 from dotenv import load_dotenv
+from config import K_EVALUATION, EVAL_LLM_MODEL, EMBEDDING_LOCAL_MODEL, CHROMA_PERSIST_DIR
+from utils import create_llm
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -41,20 +43,16 @@ def load_questions(filepath):
 
 def run_evaluation():
     print("Loading vector database")
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-    vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
+    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_LOCAL_MODEL)
+    vectorstore = Chroma(persist_directory=CHROMA_PERSIST_DIR, embedding_function=embeddings)
+    retriever = vectorstore.as_retriever(search_kwargs={"k": K_EVALUATION})
 
     questions = load_questions("baseline/question.txt")
     print(f"Loaded {len(questions)} test questions.\n")
 
     successful_retrievals = 0
 
-    judge_llm = ChatGoogleGenerativeAI(
-        model = "gemini-2.5-flash",
-        temperature = 0,
-        google_api_key = os.getenv("GOOGLE_API_KEY")
-    )
+    judge_llm = create_llm(EVAL_LLM_MODEL)
     
     for i,q in enumerate(questions):
         print(f"[{i+1}/{len(questions)}] Testing: '{q['query']}'")
