@@ -4,12 +4,14 @@ from pydantic import BaseModel, Field
 from typing import Literal
 from src.config import K_RETRIEVAL, MAX_RETRIES, EMBEDDING_LOCAL_MODEL, AGENT_LLM_MODEL, CHROMA_PERSIST_DIR
 from src.utils import create_llm
+from src.logging_config import setup_logging
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq #back-up llm
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 
 load_dotenv()
+logger = setup_logging(__name__)
 
 class RouteDecision(BaseModel):
     """Decides which data source to use based on the user's query."""
@@ -43,7 +45,7 @@ def load_vectorstore() -> Chroma:
     Returns:
         Chroma: The loaded vector store instance.
     """    
-    print("Loading vector database")
+    logger.info("Loading vector database")
     embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_LOCAL_MODEL)
     vectorstore = Chroma(persist_directory=CHROMA_PERSIST_DIR, embedding_function=embeddings)
     return vectorstore
@@ -63,10 +65,10 @@ def answer_question(question: str, router, vectorstore, answer_llm, max_retries:
         str: The answer to the user's question.
     """
     decision = router.invoke(question)
-    print(f"[Router]: '{decision.source}' ({decision.reasoning})")
+    logger.info(f"[Router]: '{decision.source}' ({decision.reasoning})")
 
     if decision.source == "none":
-        print("[Router] No retrieval needed")
+        logger.info("[Router] No retrieval needed")
         response = answer_llm.invoke(question)
         return response.content
 
@@ -96,7 +98,7 @@ def answer_question(question: str, router, vectorstore, answer_llm, max_retries:
     #Self-Correction loop
     for attempt in range(max_retries):
         if "I don't know" in answer:
-            print(f"[Agent] Attempt {attempt + 1}/{max_retries}: answer insufficient, rephrasing...")
+            logger.info(f"[Agent] Attempt {attempt + 1}/{max_retries}: answer insufficient, rephrasing...")
 
             rephrase_prompt = f"""The user asked: "{current_query}"
             A search returned no useful results. 
@@ -104,7 +106,7 @@ def answer_question(question: str, router, vectorstore, answer_llm, max_retries:
             Return ONLY the rephrased question."""
 
             current_query = answer_llm.invoke(rephrase_prompt).content.strip()
-            print(f"[Agent] Rephrased query: '{current_query}'")
+            logger.info(f"[Agent] Rephrased query: '{current_query}'")
 
             answer = retrieve_and_answer(current_query)
 
@@ -124,8 +126,8 @@ if __name__ == "__main__":
 
     answer_llm = create_llm(AGENT_LLM_MODEL)
 
-    print("--- Testing the Router --- \n")
+    logger.info("--- Testing the Router --- \n")
     for q in test_questions:
-        print(f"Question: {q}")
+        logger.info(f"Question: {q}")
         answer = answer_question(q, router, vectorstore, answer_llm)
-        print(f"Answer: {answer}\n")
+        logger.info(f"Answer: {answer}\n")

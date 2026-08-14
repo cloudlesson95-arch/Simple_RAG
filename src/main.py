@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from src.config import CHUNK_SIZE, CHUNK_OVERLAP, K_RETRIEVAL, EMBEDDING_MODEL, EMBEDDING_LOCAL_MODEL, MAIN_LLM_MODEL, CHROMA_PERSIST_DIR, DATA_DIR
 from src.utils import create_llm
+from src.logging_config import setup_logging
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
@@ -9,7 +10,9 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 #for local embedding
 from langchain_huggingface import HuggingFaceEmbeddings #pip install sentence-transformers langchain-huggingface #~80MB model + torch
 
+
 load_dotenv()
+logger = setup_logging(__name__)
 
 def load_and_chunk_documents() -> list:
     """Load and chunk documents from the data directory
@@ -37,9 +40,9 @@ def load_and_chunk_documents() -> list:
         chunks = splitter.create_documents([text], metadatas=[{"source": filename}])    
         all_chunks.extend(chunks)
 
-        print(f"Loaded {filename}: Split into {len(chunks)}")
+        logger.info(f"Loaded {filename}: Split into {len(chunks)}")
 
-    print(f"Total chunks created: {len(all_chunks)}")
+    logger.info(f"Total chunks created: {len(all_chunks)}")
     return all_chunks
 
 def create_or_load_vectorstore(chunks: list) -> Chroma:
@@ -64,10 +67,10 @@ def create_or_load_vectorstore(chunks: list) -> Chroma:
     persist_directory = CHROMA_PERSIST_DIR
 
     if os.path.exists(persist_directory):
-        print(f"Loading existing database from {persist_directory}...")
+        logger.info(f"Loading existing database from {persist_directory}...")
         vectorstore = Chroma(persist_directory=persist_directory, embedding_function=embeddings)
     else:
-        print(f"Creating new database at {persist_directory}. This might take a while...")
+        logger.info(f"Creating new database at {persist_directory}. This might take a while...")
         vectorstore = Chroma.from_documents(
             documents=chunks,
             embedding=embeddings,
@@ -85,7 +88,7 @@ if __name__ == "__main__":
     retriever = vectorstore.as_retriever(search_kwargs={"k": K_RETRIEVAL})
 
     test_question = "What is a group of cats called?"
-    print(f"\nSearching for: {test_question}")
+    logger.info(f"\nSearching for: {test_question}")
     results = retriever.invoke(test_question)
 
     llm = create_llm(MAIN_LLM_MODEL)
@@ -102,7 +105,7 @@ if __name__ == "__main__":
 
     Answer:"""
 
-    print("\nSending to LLM")
+    logger.info("\nSending to LLM")
 
     response = llm.invoke(prompt)
-    print(response.content)
+    logger.info(response.content)

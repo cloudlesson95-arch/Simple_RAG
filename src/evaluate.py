@@ -2,11 +2,13 @@ import os
 from dotenv import load_dotenv
 from src.config import K_EVALUATION, EVAL_LLM_MODEL, EMBEDDING_LOCAL_MODEL, CHROMA_PERSIST_DIR
 from src.utils import create_llm
+from src.logging_config import setup_logging
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
+logger = setup_logging(__name__)
 
 def load_questions(filepath: str) -> list[dict]:
     """Parse the question.txt file into a list of dictionaries.
@@ -49,20 +51,20 @@ def load_questions(filepath: str) -> list[dict]:
 
 
 def run_evaluation():
-    print("Loading vector database")
+    logger.info("Loading vector database")
     embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_LOCAL_MODEL)
     vectorstore = Chroma(persist_directory=CHROMA_PERSIST_DIR, embedding_function=embeddings)
     retriever = vectorstore.as_retriever(search_kwargs={"k": K_EVALUATION})
 
     questions = load_questions("baseline/question.txt")
-    print(f"Loaded {len(questions)} test questions.\n")
+    logger.info(f"Loaded {len(questions)} test questions.\n")
 
     successful_retrievals = 0
 
     judge_llm = create_llm(EVAL_LLM_MODEL)
     
     for i,q in enumerate(questions):
-        print(f"[{i+1}/{len(questions)}] Testing: '{q['query']}'")
+        logger.info(f"[{i+1}/{len(questions)}] Testing: '{q['query']}'")
 
         results = retriever.invoke(q["query"])
         
@@ -80,21 +82,21 @@ def run_evaluation():
         decision = response.content.strip().upper()
 
         if "YES" in decision:
-            print("\tSUCCESS: LLM says YES")
+            logger.info("\tSUCCESS: LLM says YES")
             successful_retrievals +=1
         else:
-            print("\tFAIL: LLM says NO")
-            print(f"\tExpected to find: {q['expected_context'][:100]}...")
-            print("\t----- What was retrieved(first 100 chars): -----")
+            logger.info("\tFAIL: LLM says NO")
+            logger.info(f"\tExpected to find: {q['expected_context'][:100]}...")
+            logger.info("\t----- What was retrieved(first 100 chars): -----")
             for j, doc in enumerate(results):
                 clean_chunk = repr(doc.page_content[:100].replace('\n', ' ').replace('\r', ''))
-                print(f"\tChunk {j+1} (Source {doc.metadata['source']}): {clean_chunk}...")
-            print("\t----------")
+                logger.info(f"\tChunk {j+1} (Source {doc.metadata['source']}): {clean_chunk}...")
+            logger.info("\t----------")
 
 
     precision = (successful_retrievals/len(questions)) * 100
-    print(f"\nFinal score: Precision@4 - {precision:.1f}%")
-    print(f"({successful_retrievals} out of {len(questions)} retrieved correctly)")
+    logger.info(f"\nFinal score: Precision@4 - {precision:.1f}%")
+    logger.info(f"({successful_retrievals} out of {len(questions)} retrieved correctly)")
 
 if __name__ == "__main__":
     run_evaluation()

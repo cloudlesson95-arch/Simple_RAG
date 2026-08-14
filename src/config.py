@@ -19,3 +19,12 @@ EVAL_LLM_MODEL = "gemini" #or groq
 #Database paths
 CHROMA_PERSIST_DIR = "./chroma_db"
 DATA_DIR = "data"
+
+# Logging configuration
+LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_TO_CONSOLE = True 
+LOG_TO_FILE = True 
+LOG_FILE_PATH = "app.log" 
+LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+LOG_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
+CAPTURE_EXTERNAL_LOGS = True  # Capture logs from external libraries
