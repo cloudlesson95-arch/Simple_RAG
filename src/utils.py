@@ -22,7 +22,7 @@ def create_llm(provider: str):
     elif provider == "groq":
         from langchain_groq import ChatGroq
         return ChatGroq(
-            model = "llama-3.1-8b-instant",
+            model = "openai/gpt-oss-20b",
             temperature=0,
             groq_api_key = os.getenv("GROQ_API_KEY")
         )

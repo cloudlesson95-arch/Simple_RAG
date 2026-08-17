@@ -20,6 +20,7 @@ def setup_logging(name: str = __name__) -> logging.Logger:
 
     # Console handler
     if LOG_TO_CONSOLE:
+        sys.stdout.reconfigure(encoding='utf-8')
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(getattr(logging, LOG_LEVEL.upper()))
         console_handler.setFormatter(formatter)
@@ -27,7 +28,7 @@ def setup_logging(name: str = __name__) -> logging.Logger:
 
     # File handler
     if LOG_TO_FILE:
-        file_handler = logging.FileHandler(LOG_FILE_PATH)
+        file_handler = logging.FileHandler(LOG_FILE_PATH, encoding="utf-8")
         file_handler.setLevel(getattr(logging, LOG_LEVEL.upper()))
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)

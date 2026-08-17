@@ -1,16 +1,9 @@
-import os
-from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from typing import Literal
-from src.config import K_RETRIEVAL, MAX_RETRIES, EMBEDDING_LOCAL_MODEL, AGENT_LLM_MODEL, CHROMA_PERSIST_DIR
+from src.config import K_RETRIEVAL, MAX_RETRIES, EMBEDDING_LOCAL_MODEL, MAIN_LLM_MODEL, CHROMA_PERSIST_DIR
 from src.utils import create_llm
-from src.logging_config import setup_logging
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_groq import ChatGroq #back-up llm
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_chroma import Chroma
 
-load_dotenv()
+from src.logging_config import setup_logging
 logger = setup_logging(__name__)
 
 class RouteDecision(BaseModel):
@@ -18,10 +11,10 @@ class RouteDecision(BaseModel):
 
     source: Literal["pydantic.llms-full.txt", "cat-facts.txt", "fictional_text.txt", "none"] = Field(
         description="""Which data source:
-        - 'pydantic.llms-full.txt': questions about Python, AI, Pydantic, LLMs, agents, models
+        - 'pydantic.llms-full.txt': questions about Python, AI, Pydantic, Anthropic, LLMs, agents, models and their values and parameters 
         - 'cat-facts.txt': questions about cats, animals, pets
         - 'fictional_text.txt': questions about Oakhaven, pumpkin festival, city council, Elena Rostova
-        - 'none': math, greetings, or anything not in the above"""
+        - 'none': basic knowledge, regular math, greetings, or anything not in the above"""
     )
 
     reasoning: str = Field(
@@ -34,22 +27,10 @@ def setup_router():
     Returns:
         The router LLM configured with structured output for RouteDecision.
     """    
-    llm = create_llm(AGENT_LLM_MODEL)
+    llm = create_llm(MAIN_LLM_MODEL)
 
     router_llm = llm.with_structured_output(RouteDecision)
     return router_llm
-
-def load_vectorstore() -> Chroma:
-    """Load the existing vector database from disk.
-    
-    Returns:
-        Chroma: The loaded vector store instance.
-    """    
-    logger.info("Loading vector database")
-    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_LOCAL_MODEL)
-    vectorstore = Chroma(persist_directory=CHROMA_PERSIST_DIR, embedding_function=embeddings)
-    return vectorstore
-
 
 def answer_question(question: str, router, vectorstore, answer_llm, max_retries: int = MAX_RETRIES) -> str:
     """Answer a user question using RAG with self-correction.
@@ -81,6 +62,7 @@ def answer_question(question: str, router, vectorstore, answer_llm, max_retries:
         )
         results = retriever.invoke(query)
         context_text = "\n---\n".join([doc.page_content for doc in results])
+        logger.debug(f"Current context_text: {context_text}")
 
         prompt = f"""Answer ONLY based on the provided context.
         If the answer is not in the context, say "I don't know."
@@ -99,6 +81,7 @@ def answer_question(question: str, router, vectorstore, answer_llm, max_retries:
     for attempt in range(max_retries):
         if "I don't know" in answer:
             logger.info(f"[Agent] Attempt {attempt + 1}/{max_retries}: answer insufficient, rephrasing...")
+            logger.debug(f"Current answer: {answer}")
 
             rephrase_prompt = f"""The user asked: "{current_query}"
             A search returned no useful results. 
@@ -111,23 +94,3 @@ def answer_question(question: str, router, vectorstore, answer_llm, max_retries:
             answer = retrieve_and_answer(current_query)
 
     return answer
-
-if __name__ == "__main__":
-    router = setup_router()
-    vectorstore = load_vectorstore()
-
-    test_questions = [
-        "What is a group of cats called?",
-        "How do I configure caching in Pydantic AI?",
-        "What was the city council's vote count on the parking garage proposal?",
-        "What is 2345 * 849?",
-        "How many visitors were in the town of Oakhaven in September?" #expected "I don't know"
-    ]
-
-    answer_llm = create_llm(AGENT_LLM_MODEL)
-
-    logger.info("--- Testing the Router --- \n")
-    for q in test_questions:
-        logger.info(f"Question: {q}")
-        answer = answer_question(q, router, vectorstore, answer_llm)
-        logger.info(f"Answer: {answer}\n")

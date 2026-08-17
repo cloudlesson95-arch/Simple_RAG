@@ -1,13 +1,12 @@
-import os
-from dotenv import load_dotenv
-from src.config import K_EVALUATION, EVAL_LLM_MODEL, EMBEDDING_LOCAL_MODEL, CHROMA_PERSIST_DIR
-from src.utils import create_llm
-from src.logging_config import setup_logging
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_google_genai import ChatGoogleGenerativeAI
+from src.config import K_EVALUATION, MAIN_LLM_MODEL, EVAL_LLM_MODEL, EMBEDDING_LOCAL_MODEL, CHROMA_PERSIST_DIR
+from src.utils import create_llm
+from src.vectorstore import create_or_get_vectorstore
+from src.rag_agent import setup_router, answer_question
 
-load_dotenv()
+from src.logging_config import setup_logging
 logger = setup_logging(__name__)
 
 def load_questions(filepath: str) -> list[dict]:
@@ -52,51 +51,45 @@ def load_questions(filepath: str) -> list[dict]:
 
 def run_evaluation():
     logger.info("Loading vector database")
-    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_LOCAL_MODEL)
-    vectorstore = Chroma(persist_directory=CHROMA_PERSIST_DIR, embedding_function=embeddings)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": K_EVALUATION})
+    vectorstore = create_or_get_vectorstore()
+    router = setup_router()
+    answer_llm = create_llm(MAIN_LLM_MODEL)
 
     questions = load_questions("baseline/question.txt")
     logger.info(f"Loaded {len(questions)} test questions.\n")
 
     successful_retrievals = 0
-
     judge_llm = create_llm(EVAL_LLM_MODEL)
     
     for i,q in enumerate(questions):
         logger.info(f"[{i+1}/{len(questions)}] Testing: '{q['query']}'")
 
-        results = retriever.invoke(q["query"])
-        
-        context_text = "\n---\n".join([doc.page_content for doc in results])
+        try:
+            answer = answer_question(q['query'], router, vectorstore, answer_llm)
+            logger.info(f"\tThe user asked: {q['query']}")
+            logger.info(f"\tLLM answer: {answer}")
 
-        judge_prompt = f"""You are an impartial judge evaluating a Search engine.
-        The user asked: '{q['query']}'
-        The system retrieved this context:
-        {context_text}
+            judge_prompt = f"""You are an impartial judge evaluating a Search engine.
+            The user asked: '{q['query']}'
+            The system retrieved this context:
+            {answer}
 
-        Does the retrieved context contain the information necessary to answer the question?
-        Reply ONLY with "YES" or "NO". Do not explain."""
+            Does this answer correctly address the question?
+            Reply ONLY with "YES" or "NO". Do not explain."""
 
-        response = judge_llm.invoke(judge_prompt)
-        decision = response.content.strip().upper()
+            response = judge_llm.invoke(judge_prompt)
+            decision = response.content.strip().upper()
 
-        if "YES" in decision:
-            logger.info("\tSUCCESS: LLM says YES")
-            successful_retrievals +=1
-        else:
-            logger.info("\tFAIL: LLM says NO")
-            logger.info(f"\tExpected to find: {q['expected_context'][:100]}...")
-            logger.info("\t----- What was retrieved(first 100 chars): -----")
-            for j, doc in enumerate(results):
-                clean_chunk = repr(doc.page_content[:100].replace('\n', ' ').replace('\r', ''))
-                logger.info(f"\tChunk {j+1} (Source {doc.metadata['source']}): {clean_chunk}...")
-            logger.info("\t----------")
-
+            if "YES" in decision:
+                logger.info("\tSUCCESS: LLM confirmed.")
+                successful_retrievals +=1
+            else:
+                logger.info("\tFAIL: LLM denied")
+                logger.info(f"\tExpected to find: {q['expected_answer'][:100]}...")
+                logger.info("-"*30)
+        except Exception as e:
+            logger.error(f"\tERROR: {str(e)}")
 
     precision = (successful_retrievals/len(questions)) * 100
     logger.info(f"\nFinal score: Precision@4 - {precision:.1f}%")
     logger.info(f"({successful_retrievals} out of {len(questions)} retrieved correctly)")
-
-if __name__ == "__main__":
-    run_evaluation()

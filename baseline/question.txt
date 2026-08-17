@@ -43,3 +43,9 @@ Query: [adversarial]
 "What does anthropic_cache_messages do, and how is that different from anthropic_cache?"
 Expected Context: "anthropic_cache_messages — This is an alternative to anthropic_cache for Anthropic-compatible gateways and proxies that accept the Anthropic message format but don't support the top-level automatic caching parameter... Cannot be combined with anthropic_cache." vs. "anthropic_cache — Enable prompt caching for multi-turn conversations. Passes a top-level cache_control parameter..."
 Expected Answer: anthropic_cache_messages adds cache_control to the last message block specifically, as a gateway/proxy-compatible alternative to the top-level anthropic_cache setting — the two are mutually exclusive. 
+
+
+general
+Query: "What is 2345 * 849?"
+Expected Context: "2345 × 849 = 1,990,905"
+Expected Answer: 1,990,905
