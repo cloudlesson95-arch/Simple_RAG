@@ -1,3 +1,4 @@
+import sys
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -93,3 +94,11 @@ def run_evaluation():
     precision = (successful_retrievals/len(questions)) * 100
     logger.info(f"\nFinal score: Precision@4 - {precision:.1f}%")
     logger.info(f"({successful_retrievals} out of {len(questions)} retrieved correctly)")
+
+    threshold = 80.0
+    if precision < threshold:
+        logger.error(f"Evaluation failed! Precision {precision:.1f}% is below the {threshold}% threshold.")
+        sys.exit(1)
+    else:
+        logger.info(f"Evaluation passed the {threshold}% threshold.")
+        sys.exit(0)
