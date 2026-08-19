@@ -41,17 +41,27 @@ User Query
      ┌─────────────────────────────────────┐
      │         Answer LLM (Groq)           │
      │  + Self-correction loop (2 retries) │
-     └─────────────────────────────────────┘
+      └─────────────────────────────────────┘
 ```
 
 The router uses **Pydantic structured output** to make a typed decision about which data source to query — or whether to skip retrieval entirely (e.g., for math questions). If the first retrieval returns "I don't know," the agent automatically rephrases the query and retries up to 2 times.
+
+## Workflow Orchestration (N8N & FastAPI)
+
+The core Python agent is wrapped in a **FastAPI** REST server (`src/api.py`). This allows **N8N** (a visual workflow orchestrator) to trigger the RAG pipeline via webhooks. 
+
+```
+Webhook ──▶ N8N HTTP Node ──▶ FastAPI POST /query ──▶ Python RAG Agent ──▶ Response
+```
+This architecture keeps the complex Pydantic logic in Python, while enabling non-engineers to connect the RAG system to Slack, emails, or CRMs visually in N8N.
 
 ## Project Structure
 
 ```
 Simple_RAG/
 ├── src/
-│   ├── app.py              # Single entry point (CLI: index, query, evaluate)
+│   ├── api.py              # FastAPI REST server exposing RAG agent
+│   ├── app.py              # Single entry point (CLI: index, query, evaluate, serve)
 │   ├── config.py            # All hyperparameters and settings
 │   ├── evaluator.py         # Evaluation pipeline with LLM-as-judge
 │   ├── logging_config.py    # Centralized logging setup
@@ -61,9 +71,12 @@ Simple_RAG/
 ├── data/                    # Source documents (3 files, different scales)
 ├── baseline/
 │   └── question.txt         # 10 test questions with expected answers
+├── n8n/
+│   └── workflow.json        # Exported N8N visual workflow pipeline
 ├── .github/workflows/
 │   └── evaluate.yml         # CI pipeline — runs eval on every push
 ├── Dockerfile               # Containerization with baked-in vector index
+├── docker-compose.yml       # Orchestrates FastAPI + N8N containers
 ├── .dockerignore
 ├── .env.example             # Template for required API keys
 ├── requirements.txt
@@ -128,9 +141,21 @@ Runs 10 test questions (including 3 adversarial) through the full pipeline. An L
 
 The remaining ~10% variance is due to LLM non-determinism — the same question can occasionally produce a different quality answer across runs. This is expected and accounted for by setting the CI threshold at 80% rather than 100%.
 
-## Docker
+## Docker & Orchestration
 
-The Dockerfile builds a fully self-contained image with the vector index pre-computed during the build step. No external database needed.
+The project uses Docker and Docker Compose for fully reproducible deployments. The vector index is pre-computed during the image build step, so no external database is needed.
+
+### Running with Docker Compose (N8N + FastAPI)
+
+To spin up both the RAG API and the N8N orchestrator:
+
+```bash
+docker compose up --build
+```
+- **FastAPI backend**: `http://localhost:8000/docs`
+- **N8N UI**: `http://localhost:5678` (import `n8n/workflow.json` here to test the webhook flow).
+
+### Running Standalone Image
 
 ```bash
 # Build the image (downloads HuggingFace model + builds index)
@@ -192,6 +217,7 @@ This project was built incrementally across 6 phases. The commit history reflect
 3. **Phase 2 — Retrieval Fixes:** Added evaluation metrics (Precision@k). Diagnosed and fixed retrieval quality issues.
 4. **Phase 3 — Agentic Layer:** Added Pydantic-based router for source selection, self-correction loop for query rephrasing, and direct-answer path for non-retrieval questions.
 5. **Phase 4 — MLOps:** Centralized config, structured logging, Docker containerization, GitHub Actions CI with automated eval gate.
+6. **Phase 5 — Orchestration (N8N):** Built a FastAPI backend to expose the agent and orchestrated it with N8N for visual webhook execution.
 
 ## Key Technical Decisions
 

@@ -22,6 +22,11 @@ def main():
     
     # Evaluate command
     eval_parser = subparsers.add_parser("evaluate", help="Run evaluation tests")
+
+    # API commands
+    serve_parser = subparsers.add_parser("serve", help="Run the FastAPI REST API server")
+    serve_parser.add_argument("--host", default="0.0.0.0", help="Host to bind (default: 0.0.0.0)")
+    serve_parser.add_argument("--port", type=int, default=8000, help="Port to bind (default: 8000)")
     
     args = parser.parse_args() 
 
@@ -51,6 +56,11 @@ def main():
     elif args.command == "evaluate":
         from src.evaluator import run_evaluation
         run_evaluation()
+
+    elif args.command == "serve":
+        import uvicorn
+        logger.info(f"Starting API server on {args.host}:{args.port}")
+        uvicorn.run("src.api:app", host=args.host, port=args.port, reload=False)
         
     else:
         parser.print_help()
