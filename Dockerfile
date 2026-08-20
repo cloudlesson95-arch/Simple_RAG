@@ -6,7 +6,9 @@ WORKDIR /app
 ENV PYTHONIOENCODING=utf-8
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install CPU-only PyTorch (avoids downloading ~6GB of CUDA binaries)
+RUN pip install --no-cache-dir torch --extra-index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
 COPY src/ ./src/
 COPY data/ ./data/
