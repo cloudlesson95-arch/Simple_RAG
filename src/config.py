@@ -27,3 +27,8 @@ LOG_FILE_PATH = "app.log"
 LOG_FORMAT = '%(message)s'#'%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 LOG_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
 CAPTURE_EXTERNAL_LOGS = False  # Capture logs from external libraries
+
+ROUTING_METHOD = "llm"  # "llm", "classical"
+GENERATE_VISUALIZATION = True
+CLUSTERS_DIR = "clusters"
+CLASSIFIER_MODEL_PATH = f"{CLUSTERS_DIR}/retrieval_classifier.joblib"
