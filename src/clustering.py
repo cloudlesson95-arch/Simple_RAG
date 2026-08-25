@@ -14,7 +14,7 @@ logger = setup_logging(__name__)
 CENTROIDS_PATH = os.path.join(CLUSTERS_DIR, "source_centroids.joblib")
 
 def train_clustering():
-    """Train K-Means clustering on existing vectorstore embeddings."""
+    """Calculate and save the mean embedding (centroid) for each document source."""
     logger.info("Loading vector database for clustering...")
     vectorstore = create_or_get_vectorstore()
 
@@ -101,6 +101,3 @@ def predict_source(query_embedding):
             best_source = source
 
     return best_source if best_source else "none"
-
-if __name__ == "__main__":
-    train_clustering()

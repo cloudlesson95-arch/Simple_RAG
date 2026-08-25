@@ -6,7 +6,7 @@ from sklearn.linear_model import LogisticRegression
 from src.config import CLASSIFIER_MODEL_PATH, CLUSTERS_DIR, EMBEDDING_LOCAL_MODEL
 from src.logging_config import setup_logging
 from src.evaluator import load_questions
-from langchain_huggingface import HuggingFaceEmbeddings
+from src.vectorstore import create_or_get_vectorstore
 
 logger = setup_logging(__name__)
 
@@ -47,7 +47,8 @@ def train_classifier():
     training_data = load_training_data()
 
     logger.info("Initializing embedding model for training classifier...")
-    embeddings_model = HuggingFaceEmbeddings(model_name=EMBEDDING_LOCAL_MODEL)
+    vectorstore = create_or_get_vectorstore()
+    embeddings_model = vectorstore._embedding_function
     
     queries, labels = zip(*training_data)
     logger.info(f"Embedding {len(queries)} training queries...")
@@ -74,6 +75,3 @@ def predict_needs_retrieval(query_embedding) -> bool:
     classifier = joblib.load(CLASSIFIER_MODEL_PATH)
     prediction = classifier.predict([query_embedding])[0]
     return bool(prediction == 1)
-
-if __name__ == "__main__":
-    train_classifier()

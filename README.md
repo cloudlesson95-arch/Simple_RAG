@@ -11,11 +11,12 @@ Every component was added incrementally with a clear engineering rationale and p
 |---|---|
 | **RAG fundamentals** | Document chunking, embedding, vector search, context-stuffed LLM prompting |
 | **Agentic routing** | Pydantic-based structured output to route queries to the correct data source |
+| **Classical ML routing** | Replacing LLM router with Logistic Regression (needs retrieval) & Nearest Centroid (source selection) |
 | **Self-correction** | Automatic query rephrasing when retrieval returns insufficient context |
 | **Evaluation pipeline** | LLM-as-judge scoring with Precision@k metrics and pass/fail thresholds |
-| **Containerization** | Dockerfile with baked-in vector index for reproducible deployments |
+| **Containerization** | Dockerfile with baked-in vector index and ML models for reproducible deployments |
 | **CI/CD** | GitHub Actions pipeline that blocks merges if AI accuracy drops below 80% |
-| **Centralized config** | All hyperparameters (chunk size, k, models) in one file — not hardcoded |
+| **Centralized config** | All hyperparameters (chunk size, k, models, routing method) in one file — not hardcoded |
 | **Structured logging** | Python `logging` module replacing all `print()` statements |
 
 ## Architecture
@@ -46,6 +47,27 @@ User Query
 
 The router uses **Pydantic structured output** to make a typed decision about which data source to query — or whether to skip retrieval entirely (e.g., for math questions). If the first retrieval returns "I don't know," the agent automatically rephrases the query and retries up to 2 times.
 
+## Classical ML Routing vs. LLM Router
+
+In addition to the LLM router, the pipeline implements a **zero-cost, sub-millisecond classical ML router** using two models trained on document embeddings:
+
+1. **Decision Point 1 ("Needs retrieval?"):** A **Logistic Regression** binary classifier (`src/classifier.py`) trained on query embeddings. Predicts whether a query requires vector search vs. direct LLM answer (greetings, math, general chitchat).
+2. **Decision Point 2 ("Which source?"):** A **Nearest Centroid** classifier (`src/clustering.py`). Computes the mean embedding vector for each source document and routes query embeddings to the closest source centroid via Euclidean distance.
+
+Switch between routing methods via environment variable or [`src/config.py`](src/config.py): `ROUTING_METHOD = "llm"` or `"classical"`.
+
+### Performance Comparison
+
+| Metric | LLM Router (`ROUTING_METHOD="llm"`) | Classical ML Router (`ROUTING_METHOD="classical"`) |
+|---|---|---|
+| **Precision@4 Score** | **90.0%** (9/10) | **90.0%** (9/10) |
+| **Routing Latency** | ~500–800 ms (API call) | **< 1 ms** (local NumPy math) |
+| **Token Cost per Query** | ~150 prompt tokens | **$0.00** (Zero API calls) |
+| **Determinism** | Non-deterministic | **100% Deterministic** |
+| **Offline Capability** | Requires internet/API key | **Fully offline** |
+
+*Key takeaway:* For a fixed corpus with known topics, classical ML achieves **identical accuracy** to an LLM router while eliminating 100% of routing latency and API cost.
+
 ## Workflow Orchestration (N8N & FastAPI)
 
 The core Python agent is wrapped in a **FastAPI** REST server (`src/api.py`). This allows **N8N** (a visual workflow orchestrator) to trigger the RAG pipeline via webhooks. 
@@ -62,12 +84,15 @@ Simple_RAG/
 ├── src/
 │   ├── api.py              # FastAPI REST server exposing RAG agent
 │   ├── app.py              # Single entry point (CLI: index, query, evaluate, serve)
+│   ├── classifier.py       # Logistic Regression classifier for retrieval necessity
+│   ├── clustering.py       # Nearest Centroid classifier & t-SNE visualization
 │   ├── config.py            # All hyperparameters and settings
 │   ├── evaluator.py         # Evaluation pipeline with LLM-as-judge
 │   ├── logging_config.py    # Centralized logging setup
-│   ├── rag_agent.py         # Router + self-correction agent
+│   ├── rag_agent.py         # Router (LLM / Classical) + self-correction agent
 │   ├── utils.py             # LLM factory (Groq / Gemini)
 │   └── vectorstore.py       # Chunking, embedding, ChromaDB operations
+├── clusters/                # Saved ML models & t-SNE visualization PNG
 ├── data/                    # Source documents (3 files, different scales)
 ├── baseline/
 │   └── question.txt         # 10 test questions with expected answers
@@ -75,7 +100,7 @@ Simple_RAG/
 │   └── workflow.json        # Exported N8N visual workflow pipeline
 ├── .github/workflows/
 │   └── evaluate.yml         # CI pipeline — runs eval on every push
-├── Dockerfile               # Containerization with baked-in vector index
+├── Dockerfile               # Containerization with baked-in vector index & ML models
 ├── docker-compose.yml       # Orchestrates FastAPI + N8N containers
 ├── .dockerignore
 ├── .env.example             # Template for required API keys
@@ -218,6 +243,7 @@ This project was built incrementally across 6 phases. The commit history reflect
 4. **Phase 3 — Agentic Layer:** Added Pydantic-based router for source selection, self-correction loop for query rephrasing, and direct-answer path for non-retrieval questions.
 5. **Phase 4 — MLOps:** Centralized config, structured logging, Docker containerization, GitHub Actions CI with automated eval gate.
 6. **Phase 5 — Orchestration (N8N):** Built a FastAPI backend to expose the agent and orchestrated it with N8N for visual webhook execution.
+6. **Phase 6 — Classical ML Routing vs. LLM Router:** Implements a zero-cost, sub-millisecond classical ML router.
 
 ## Key Technical Decisions
 

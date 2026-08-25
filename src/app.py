@@ -32,6 +32,8 @@ def main():
 
     if args.command == "index":
         from src.vectorstore import load_and_chunk_documents, create_or_get_vectorstore
+        from src.clustering import train_clustering
+        from src.classifier import train_classifier
         
         if args.rebuild:
             logger.info(f"Rebuilding index - removing existing database at path: {CHROMA_PERSIST_DIR}")
@@ -42,6 +44,10 @@ def main():
         chunks = load_and_chunk_documents()
         vectorstore = create_or_get_vectorstore(chunks)
         logger.info("Index created/loaded successfully")
+
+        logger.info("Training classical ML routing models...")
+        train_clustering()
+        train_classifier()
         
     elif args.command == "query":
         from src.vectorstore import create_or_get_vectorstore

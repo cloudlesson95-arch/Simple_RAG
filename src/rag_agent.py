@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Literal
-from src.config import K_RETRIEVAL, MAX_RETRIES, EMBEDDING_LOCAL_MODEL, MAIN_LLM_MODEL, CHROMA_PERSIST_DIR
+from src.config import K_RETRIEVAL, MAX_RETRIES, EMBEDDING_LOCAL_MODEL, MAIN_LLM_MODEL, ROUTING_METHOD
 from src.utils import create_llm
 
 from src.logging_config import setup_logging
@@ -45,19 +45,39 @@ def answer_question(question: str, router, vectorstore, answer_llm, max_retries:
     Returns:
         str: The answer to the user's question.
     """
-    decision = router.invoke(question)
-    logger.info(f"[Router]: '{decision.source}' ({decision.reasoning})")
+    if ROUTING_METHOD == "classical":
+        from src.classifier import predict_needs_retrieval
+        from src.clustering import predict_source
 
-    if decision.source == "none":
-        logger.info("[Router] No retrieval needed")
-        response = answer_llm.invoke(question)
-        return response.content
+        query_embedding = vectorstore._embedding_function.embed_query(question)
+
+        # Decision Point 1: Needs retrieval? (classifier)
+        needs_retrieval = predict_needs_retrieval(query_embedding)
+        if not needs_retrieval:
+            logger.info("[Classical Router]: No retrieval needed (Logistic Regression)")
+            response = answer_llm.invoke(question)
+            return response.content
+
+        # Decision Point 2: Nearest source centroid (clustering)
+        source_filter = predict_source(query_embedding)
+        logger.info(f"[Classical Router]: Selected source '{source_filter}' (Nearest Centroid)")
+
+    else: # Default: "llm"
+        decision = router.invoke(question)
+        logger.info(f"[Router]: '{decision.source}' ({decision.reasoning})")
+
+        if decision.source == "none":
+            logger.info("[Router] No retrieval needed")
+            response = answer_llm.invoke(question)
+            return response.content
+
+        source_filter = decision.source
 
     def retrieve_and_answer(query):
         retriever = vectorstore.as_retriever(
             search_kwargs={
                 "k": K_RETRIEVAL,
-                "filter": {"source": decision.source}
+                "filter": {"source": source_filter}
             }
         )
         results = retriever.invoke(query)
