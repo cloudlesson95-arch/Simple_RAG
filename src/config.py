@@ -32,7 +32,11 @@ LOG_FORMAT = '%(message)s'#'%(asctime)s - %(name)s - %(levelname)s - %(message)s
 LOG_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
 CAPTURE_EXTERNAL_LOGS = False  # Capture logs from external libraries
 
-ROUTING_METHOD = os.getenv("ROUTING_METHOD", "llm")  # "llm", "classical"
+ROUTING_METHOD = os.getenv("ROUTING_METHOD", "classical")  # "llm", "classical"
 GENERATE_VISUALIZATION = True
 CLUSTERS_DIR = "clusters"
 CLASSIFIER_MODEL_PATH = f"{CLUSTERS_DIR}/retrieval_classifier.joblib"
+
+ENABLE_SEMANTIC_CACHE = True
+CACHE_SIMILARITY_THRESHOLD = 0.95
+SEMANTIC_CACHE_DIR = "s_cache"

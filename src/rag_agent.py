@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
 from typing import Literal
-from src.config import K_RETRIEVAL, MAX_RETRIES, EMBEDDING_LOCAL_MODEL, MAIN_LLM_MODEL, ROUTING_METHOD
+from src.config import K_RETRIEVAL, MAX_RETRIES, EMBEDDING_LOCAL_MODEL, MAIN_LLM_MODEL, ROUTING_METHOD, ENABLE_SEMANTIC_CACHE
 from src.utils import create_llm
+from src.semantic_cache import check_cache, add_to_cache
 
 from src.logging_config import setup_logging
 logger = setup_logging(__name__)
@@ -45,35 +46,15 @@ def answer_question(question: str, router, vectorstore, answer_llm, max_retries:
     Returns:
         str: The answer to the user's question.
     """
-    if ROUTING_METHOD == "classical":
-        from src.classifier import predict_needs_retrieval
-        from src.clustering import predict_source
+    if ENABLE_SEMANTIC_CACHE:
+        query_vec = vectorstore._embedding_function.embed_query(question)
+        hit, cached_answer, sim = check_cache(query_vec)
+        if hit:
+            logger.info(f"[Semantic Cache]: HIT (similarity {sim:.3f}) — skipping retrieval & LLM generation.")
+            return cached_answer
+        logger.info(f"[Semantic Cache]: MISS (highest similarity {sim:.3f})")
 
-        query_embedding = vectorstore._embedding_function.embed_query(question)
-
-        # Decision Point 1: Needs retrieval? (classifier)
-        needs_retrieval = predict_needs_retrieval(query_embedding)
-        if not needs_retrieval:
-            logger.info("[Classical Router]: No retrieval needed (Logistic Regression)")
-            response = answer_llm.invoke(question)
-            return response.content
-
-        # Decision Point 2: Nearest source centroid (clustering)
-        source_filter = predict_source(query_embedding)
-        logger.info(f"[Classical Router]: Selected source '{source_filter}' (Nearest Centroid)")
-
-    else: # Default: "llm"
-        decision = router.invoke(question)
-        logger.info(f"[Router]: '{decision.source}' ({decision.reasoning})")
-
-        if decision.source == "none":
-            logger.info("[Router] No retrieval needed")
-            response = answer_llm.invoke(question)
-            return response.content
-
-        source_filter = decision.source
-
-    def retrieve_and_answer(query):
+    def retrieve_and_answer(query, source_filter):
         retriever = vectorstore.as_retriever(
             search_kwargs={
                 "k": K_RETRIEVAL,
@@ -94,9 +75,35 @@ def answer_question(question: str, router, vectorstore, answer_llm, max_retries:
         Answer:"""
         return answer_llm.invoke(prompt).content
 
+    source_filter = "none"
+    if ROUTING_METHOD == "classical":
+        from src.classifier import predict_needs_retrieval
+        from src.clustering import predict_source
+
+        query_embedding = vectorstore._embedding_function.embed_query(question)
+
+        # Decision Point 1: Needs retrieval? (classifier)
+        needs_retrieval = predict_needs_retrieval(query_embedding)
+        if not needs_retrieval:
+            logger.info("[Classical Router]: No retrieval needed (Logistic Regression)")
+            answer = answer_llm.invoke(question).content
+        else:
+            # Decision Point 2: Nearest source centroid (clustering)
+            source_filter = predict_source(query_embedding)
+            logger.info(f"[Classical Router]: Selected source '{source_filter}' (Nearest Centroid)")
+            answer = retrieve_and_answer(question, source_filter)
+
+    else: # Default: "llm"
+        decision = router.invoke(question)
+        logger.info(f"[Router]: '{decision.source}' ({decision.reasoning})")
+
+        if decision.source == "none":
+            logger.info("[Router] No retrieval needed")
+            answer = answer_llm.invoke(question).content
+        else:
+            answer = retrieve_and_answer(question, decision.source)
+
     current_query = question
-    answer = retrieve_and_answer(current_query)
-    
     #Self-Correction loop
     for attempt in range(max_retries):
         if "I don't know" in answer:
@@ -111,6 +118,12 @@ def answer_question(question: str, router, vectorstore, answer_llm, max_retries:
             current_query = answer_llm.invoke(rephrase_prompt).content.strip()
             logger.info(f"[Agent] Rephrased query: '{current_query}'")
 
-            answer = retrieve_and_answer(current_query)
+            answer = retrieve_and_answer(current_query, source_filter)
+
+    if ENABLE_SEMANTIC_CACHE:
+        if "I don't know" in answer:
+             logger.info("[Semantic Cache]: Skipping caching for 'I don't know' answer.")
+        else:
+            add_to_cache(question, query_vec, answer)
 
     return answer

@@ -90,9 +90,11 @@ Simple_RAG/
 │   ├── evaluator.py         # Evaluation pipeline with LLM-as-judge
 │   ├── logging_config.py    # Centralized logging setup
 │   ├── rag_agent.py         # Router (LLM / Classical) + self-correction agent
+│   ├── semantic_cache.py    # Sub-millisecond vector similarity caching
 │   ├── utils.py             # LLM factory (Groq / Gemini)
 │   └── vectorstore.py       # Chunking, embedding, ChromaDB operations
 ├── clusters/                # Saved ML models & t-SNE visualization PNG
+├── s_cache/                 # Persisted semantic cache store
 ├── data/                    # Source documents (3 files, different scales)
 ├── baseline/
 │   └── question.txt         # 10 test questions with expected answers
@@ -232,6 +234,10 @@ All hyperparameters are centralized in [`src/config.py`](src/config.py):
 | `MAIN_LLM_MODEL` | `groq` | LLM provider for routing and answering |
 | `EVAL_LLM_MODEL` | `groq` | LLM provider for judge evaluation |
 | `EMBEDDING_LOCAL_MODEL` | `all-MiniLM-L6-v2` | Local embedding model (~80MB) |
+| `ROUTING_METHOD` | `classical` | Routing engine (`llm` or `classical`) |
+| `ENABLE_SEMANTIC_CACHE` | `True` | Toggle sub-millisecond vector similarity caching |
+| `CACHE_SIMILARITY_THRESHOLD` | `0.95` | Cosine similarity threshold for semantic cache hit |
+| `SEMANTIC_CACHE_DIR` | `s_cache` | Directory where semantic cache is persisted |
 
 ## Development Journey
 
@@ -243,7 +249,7 @@ This project was built incrementally across 6 phases. The commit history reflect
 4. **Phase 3 — Agentic Layer:** Added Pydantic-based router for source selection, self-correction loop for query rephrasing, and direct-answer path for non-retrieval questions.
 5. **Phase 4 — MLOps:** Centralized config, structured logging, Docker containerization, GitHub Actions CI with automated eval gate.
 6. **Phase 5 — Orchestration (N8N):** Built a FastAPI backend to expose the agent and orchestrated it with N8N for visual webhook execution.
-6. **Phase 6 — Classical ML Routing vs. LLM Router:** Implements a zero-cost, sub-millisecond classical ML router.
+7. **Phase 6 — Classical ML Routing & Semantic Caching:** Replaced LLM router with Logistic Regression & Nearest Centroid classifiers (<1ms, $0 token cost), and added a vector similarity semantic cache layer with selective invalidation on evaluation denial.
 
 ## Key Technical Decisions
 

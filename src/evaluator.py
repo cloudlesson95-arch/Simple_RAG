@@ -2,10 +2,11 @@ import sys
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_google_genai import ChatGoogleGenerativeAI
-from src.config import K_EVALUATION, MAIN_LLM_MODEL, EVAL_LLM_MODEL, EMBEDDING_LOCAL_MODEL, CHROMA_PERSIST_DIR
+from src.config import K_EVALUATION, MAIN_LLM_MODEL, EVAL_LLM_MODEL, EMBEDDING_LOCAL_MODEL, CHROMA_PERSIST_DIR, ENABLE_SEMANTIC_CACHE
 from src.utils import create_llm
 from src.vectorstore import create_or_get_vectorstore
 from src.rag_agent import setup_router, answer_question
+from src.semantic_cache import remove_cache_entry
 
 from src.logging_config import setup_logging
 logger = setup_logging(__name__)
@@ -63,12 +64,12 @@ def run_evaluation():
     judge_llm = create_llm(EVAL_LLM_MODEL)
     
     for i,q in enumerate(questions):
-        logger.info(f"[{i+1}/{len(questions)}] Testing: '{q['query']}'")
+        logger.info(f"\n[{i+1}/{len(questions)}] Testing: '{q['query']}'")
 
         try:
             answer = answer_question(q['query'], router, vectorstore, answer_llm)
             logger.info(f"\tThe user asked: {q['query']}")
-            logger.info(f"\tLLM answer: {answer}")
+            logger.info(f"\tLLM answer: {answer}")            
 
             judge_prompt = f"""You are an impartial judge evaluating a Search engine.
             The user asked: '{q['query']}'
@@ -88,6 +89,10 @@ def run_evaluation():
                 logger.info("\tFAIL: LLM denied")
                 logger.info(f"\tExpected to find: {q['expected_answer'][:100]}...")
                 logger.info("-"*30)
+                
+                if ENABLE_SEMANTIC_CACHE:
+                    remove_cache_entry(q['query'])
+
         except Exception as e:
             logger.error(f"\tERROR: {str(e)}")
 
