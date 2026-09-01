@@ -40,3 +40,9 @@ CLASSIFIER_MODEL_PATH = f"{CLUSTERS_DIR}/retrieval_classifier.joblib"
 ENABLE_SEMANTIC_CACHE = True
 CACHE_SIMILARITY_THRESHOLD = 0.95
 SEMANTIC_CACHE_DIR = "s_cache"
+
+# Preferred models per provider (tried in order, first available wins)
+PREFERRED_MODELS = {
+    "groq": ["openai/gpt-oss-20b", "qwen/qwen3.6-27b"],
+    "gemini": ["gemini-2.5-flash", "gemini-3.5-flash"],
+}

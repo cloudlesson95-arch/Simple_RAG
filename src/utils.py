@@ -1,4 +1,5 @@
 import os
+from src.model_resolver import get_model
 
 def create_llm(provider: str):
     """Factory function to create LLM instances based on the provider name.
@@ -12,17 +13,19 @@ def create_llm(provider: str):
     Raises:
         ValueError: If an unknown provider is specified.
     """
+    model = get_model(provider)
+
     if provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(
-            model = "gemini-2.5-flash",
+            model = model,
             temperature=0,
             google_api_key=os.getenv("GOOGLE_API_KEY")
         )
     elif provider == "groq":
         from langchain_groq import ChatGroq
         return ChatGroq(
-            model = "openai/gpt-oss-20b",
+            model = model,
             temperature=0,
             groq_api_key = os.getenv("GROQ_API_KEY")
         )
