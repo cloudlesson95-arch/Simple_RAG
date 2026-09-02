@@ -3,7 +3,7 @@ import joblib
 import numpy as np
 
 from sklearn.linear_model import LogisticRegression
-from src.config import CLASSIFIER_MODEL_PATH, CLUSTERS_DIR, EMBEDDING_LOCAL_MODEL
+from src.config import CLASSIFIER_MODEL_PATH, CLUSTERS_DIR, EMBEDDING_LOCAL_MODEL, EVAL_QUESTIONS_PATH
 from src.logging_config import setup_logging
 from src.evaluator import load_questions
 from src.vectorstore import create_or_get_vectorstore
@@ -28,7 +28,7 @@ NON_RETRIEVAL_DATA = [
 
 def load_training_data():
     """Load evaluation questions and combine with generic non-retrieval examples."""
-    eval_questions = load_questions("baseline/question.txt")
+    eval_questions = load_questions(EVAL_QUESTIONS_PATH)
     
     domain_queries = []
     for q in eval_questions:
