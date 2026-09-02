@@ -25,6 +25,6 @@ jobs:
         docker run --env GROQ_API_KEY=$GROQ_API_KEY \
                    --env GOOGLE_API_KEY=$GOOGLE_API_KEY \
                    --env GITHUB_STEP_SUMMARY=/tmp/step_summary.md \
-                   -v ${{ env.GITHUB_STEP_SUMMARY }}:/tmp/step_summary.md \
+                   -v $GITHUB_STEP_SUMMARY:/tmp/step_summary.md \
                    simple-rag \
                    python -m src.app evaluate
