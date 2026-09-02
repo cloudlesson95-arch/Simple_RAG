@@ -10,3 +10,4 @@ baseline/*.db
 *.log
 clusters/
 s_cache/
+summary.md

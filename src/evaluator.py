@@ -109,25 +109,24 @@ def run_evaluation():
     )
     logger.info(f"Saved evaluation metrics to DB (Run ID #{run_id} at '{EVAL_DB_PATH}')")
 
-    # Write Markdown summary to GitHub Actions Step Summary (if running in CI)
-    github_summary_path = os.getenv("GITHUB_STEP_SUMMARY")
-    if github_summary_path:
-        try:
-            with open(github_summary_path, "a", encoding="utf-8") as f:
-                f.write(f"## 📊 RAG Pipeline Evaluation Summary\n\n")
-                f.write(f"- **Precision@4 Score:** `{precision:.1f}%`\n")
-                f.write(f"- **Main Model:** `{MAIN_LLM_MODEL}`\n")
-                f.write(f"- **Routing Method:** `{ROUTING_METHOD}`\n")
-                f.write(f"- **Status:** `{'Passed ✅' if passed_threshold else 'Failed ❌'}`\n\n")
-                
-                f.write("| ID | Query | Status |\n")
-                f.write("|---|---|---|\n")
-                for res in question_results:
-                    status = "✅ PASS" if res["passed"] else "❌ FAIL"
-                    f.write(f"| {res.get('id', '-')} | {res['query']} | {status} |\n")
-            logger.info("Wrote evaluation summary to GitHub Step Summary.")
-        except Exception as e:
-            logger.warning(f"Could not write to GITHUB_STEP_SUMMARY: {e}")
+    # Write evaluation summary report to a local markdown file
+    summary_path = os.path.join(os.path.dirname(EVAL_DB_PATH), "summary.md")
+    try:
+        with open(summary_path, "w", encoding="utf-8") as f:
+            f.write(f"## 📊 RAG Pipeline Evaluation Summary\n\n")
+            f.write(f"- **Precision@4 Score:** `{precision:.1f}%`\n")
+            f.write(f"- **Main Model:** `{MAIN_LLM_MODEL}`\n")
+            f.write(f"- **Routing Method:** `{ROUTING_METHOD}`\n")
+            f.write(f"- **Status:** `{'Passed ✅' if passed_threshold else 'Failed ❌'}`\n\n")
+            
+            f.write("| ID | Query | Status |\n")
+            f.write("|---|---|---|\n")
+            for res in question_results:
+                status = "✅ PASS" if res["passed"] else "❌ FAIL"
+                f.write(f"| {res.get('id', '-')} | {res['query']} | {status} |\n")
+        logger.info(f"Wrote evaluation summary to '{summary_path}'.")
+    except Exception as e:
+        logger.warning(f"Could not write summary file: {e}")
 
     if not passed_threshold:
         logger.error(f"Evaluation failed! Precision {precision:.1f}% is below the {threshold}% threshold.")
