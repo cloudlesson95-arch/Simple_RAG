@@ -13,9 +13,9 @@ Every component was added incrementally with a clear engineering rationale and p
 | **Agentic routing** | Pydantic-based structured output to route queries to the correct data source |
 | **Classical ML routing** | Replacing LLM router with Logistic Regression (needs retrieval) & Nearest Centroid (source selection) |
 | **Self-correction** | Automatic query rephrasing when retrieval returns insufficient context |
-| **Evaluation pipeline** | LLM-as-judge scoring with Precision@k metrics and pass/fail thresholds |
+| **Evaluation pipeline** | LLM-as-judge scoring with Precision@k metrics, JSON baselines, and SQLite run history |
 | **Containerization** | Dockerfile with baked-in vector index and ML models for reproducible deployments |
-| **CI/CD** | GitHub Actions pipeline that blocks merges if AI accuracy drops below 80% |
+| **CI/CD** | GitHub Actions pipeline with automated pass/fail gates and Step Summaries |
 | **Centralized config** | All hyperparameters (chunk size, k, models, routing method) in one file — not hardcoded |
 | **Structured logging** | Python `logging` module replacing all `print()` statements |
 
@@ -83,11 +83,12 @@ This architecture keeps the complex Pydantic logic in Python, while enabling non
 Simple_RAG/
 ├── src/
 │   ├── api.py              # FastAPI REST server exposing RAG agent
-│   ├── app.py              # Single entry point (CLI: index, query, evaluate, serve)
+│   ├── app.py              # Single entry point (CLI: index, query, evaluate, history, serve)
 │   ├── classifier.py       # Logistic Regression classifier for retrieval necessity
 │   ├── clustering.py       # Nearest Centroid classifier & t-SNE visualization
 │   ├── config.py            # All hyperparameters and settings
-│   ├── evaluator.py         # Evaluation pipeline with LLM-as-judge
+│   ├── eval_db.py           # SQLite database wrapper for tracking evaluation history
+│   ├── evaluator.py         # Evaluation pipeline with LLM-as-judge & result logger
 │   ├── logging_config.py    # Centralized logging setup
 │   ├── rag_agent.py         # Router (LLM / Classical) + self-correction agent
 │   ├── semantic_cache.py    # Sub-millisecond vector similarity caching
@@ -97,11 +98,11 @@ Simple_RAG/
 ├── s_cache/                 # Persisted semantic cache store
 ├── data/                    # Source documents (3 files, different scales)
 ├── baseline/
-│   └── question.txt         # 10 test questions with expected answers
+│   └── questions.json       # 10 structured test questions with expected context & answers
 ├── n8n/
 │   └── workflow.json        # Exported N8N visual workflow pipeline
 ├── .github/workflows/
-│   └── evaluate.yml         # CI pipeline — runs eval on every push
+│   └── evaluate.yml         # CI pipeline — runs eval and logs step summaries
 ├── Dockerfile               # Containerization with baked-in vector index & ML models
 ├── docker-compose.yml       # Orchestrates FastAPI + N8N containers
 ├── .dockerignore
@@ -156,17 +157,17 @@ python -m src.app query "What is 2345 * 849?"
 # (Router detects this needs no retrieval — answers directly)
 ```
 
-### Run the Evaluation
+### Run Evaluation & View History
 
 ```bash
+# Run evaluation suite
 python -m src.app evaluate
+
+# View historical evaluation runs
+python -m src.app history
 ```
 
-Runs 10 test questions (including 3 adversarial) through the full pipeline. An LLM judge evaluates each answer. The script exits with code `1` if Precision@k drops below 80%.
-
-**Current baseline: ~90% (9/10 correct) on average**
-
-The remaining ~10% variance is due to LLM non-determinism — the same question can occasionally produce a different quality answer across runs. This is expected and accounted for by setting the CI threshold at 80% rather than 100%.
+Runs 10 test questions (including 3 adversarial) from `baseline/questions.json`. An LLM judge evaluates each answer and persists the run metrics to `baseline/eval_history.db`. The script exits with code `1` if Precision@k drops below 80%.
 
 ## Docker & Orchestration
 
@@ -203,11 +204,10 @@ Every push to `main` triggers a GitHub Actions workflow that:
 
 1. Builds the Docker image on a clean Ubuntu server
 2. Runs the full evaluation suite inside the container
-3. **Blocks the merge** if Precision@k drops below 80%
+3. **Generates a formatted Markdown summary card** in GitHub Action Step Summaries
+4. **Blocks the merge** if Precision@k drops below 80%
 
 API keys are stored as GitHub Repository Secrets — never in code or in the Docker image.
-
-This ensures that no prompt change, model swap, or code refactor can silently degrade the AI's accuracy.
 
 ## Test Corpus
 
@@ -219,7 +219,7 @@ Three data sources at deliberately different scales to test different failure mo
 | `cat-facts.txt` | ~150 lines | Test chunk boundary effects on medium-length content |
 | `pydantic.llms-full.txt` | 4 MB | Real-world retrieval on actual technical documentation |
 
-Test questions include **adversarial cases**: questions requiring information from multiple chunks, questions with answers not in the corpus, and questions phrased differently from the source text.
+Test questions in `baseline/questions.json` include **adversarial cases**: questions requiring information from multiple chunks, questions with answers not in the corpus, and questions phrased differently from the source text.
 
 ## Configuration
 
@@ -238,6 +238,8 @@ All hyperparameters are centralized in [`src/config.py`](src/config.py):
 | `ENABLE_SEMANTIC_CACHE` | `True` | Toggle sub-millisecond vector similarity caching |
 | `CACHE_SIMILARITY_THRESHOLD` | `0.95` | Cosine similarity threshold for semantic cache hit |
 | `SEMANTIC_CACHE_DIR` | `s_cache` | Directory where semantic cache is persisted |
+| `EVAL_QUESTIONS_PATH` | `baseline/questions.json` | Path to benchmark JSON test cases |
+| `EVAL_DB_PATH` | `baseline/eval_history.db` | Path to SQLite evaluation history database |
 
 ## Development Journey
 

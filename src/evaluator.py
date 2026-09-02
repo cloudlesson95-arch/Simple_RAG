@@ -1,18 +1,20 @@
 import sys
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_chroma import Chroma
-from langchain_google_genai import ChatGoogleGenerativeAI
-from src.config import K_EVALUATION, MAIN_LLM_MODEL, EVAL_LLM_MODEL, EMBEDDING_LOCAL_MODEL, CHROMA_PERSIST_DIR, ENABLE_SEMANTIC_CACHE
+import json
+from src.config import (
+    K_EVALUATION, MAIN_LLM_MODEL, EVAL_LLM_MODEL, ROUTING_METHOD,
+    ENABLE_SEMANTIC_CACHE, EVAL_QUESTIONS_PATH, EVAL_DB_PATH
+)
 from src.utils import create_llm
 from src.vectorstore import create_or_get_vectorstore
 from src.rag_agent import setup_router, answer_question
 from src.semantic_cache import remove_cache_entry
+from src.eval_db import save_eval_run
 
 from src.logging_config import setup_logging
 logger = setup_logging(__name__)
 
 def load_questions(filepath: str) -> list[dict]:
-    """Parse the question.txt file into a list of dictionaries.
+    """Parse JSON baseline file into a list of question dictionaries.
     
     Args:
         filepath: Path to the questions file.
@@ -23,33 +25,7 @@ def load_questions(filepath: str) -> list[dict]:
     """
     questions = []
     with open(filepath, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-
-    current_q = {}
-    for line in lines:
-        line = line.strip()
-        if line.startswith("Query:"):
-            # Handle the [adversarial] tag 
-            q_text = line.replace("Query:", "").replace("[adversarial]", "").strip()
-            if q_text.startswith('"') and q_text.endswith('"'):
-                current_q["query"] = q_text[1:-1]
-        elif line.startswith('"') and "query" not in current_q:
-            # Handle multi-line query where text is on the next line
-            current_q["query"] = line.strip('"')
-        elif line.startswith("Expected Context:"):
-            try:
-                context = line.split('"')[1]
-                current_q["expected_context"] = context
-            except IndexError:
-                current_q["expected_context"] = line.replace("Expected Context:", "").strip()
-        elif line.startswith("Expected Answer:"):
-            current_q["expected_answer"] = line.replace("Expected Answer:", "").strip()
-
-            if "query" in current_q and "expected_context" in current_q:
-                questions.append(current_q)
-            current_q = {}
-    return questions  
-
+        return json.load(f)
 
 def run_evaluation():
     logger.info("Loading vector database")
@@ -57,11 +33,12 @@ def run_evaluation():
     router = setup_router()
     answer_llm = create_llm(MAIN_LLM_MODEL)
 
-    questions = load_questions("baseline/question.txt")
+    questions = load_questions(EVAL_QUESTIONS_PATH)
     logger.info(f"Loaded {len(questions)} test questions.\n")
 
     successful_retrievals = 0
     judge_llm = create_llm(EVAL_LLM_MODEL)
+    question_results = []
     
     for i,q in enumerate(questions):
         logger.info(f"\n[{i+1}/{len(questions)}] Testing: '{q['query']}'")
@@ -81,27 +58,77 @@ def run_evaluation():
 
             response = judge_llm.invoke(judge_prompt)
             decision = response.content.strip().upper()
+            is_passed = "YES" in decision
 
-            if "YES" in decision:
+            question_results.append({
+                "id": q.get("id"),
+                "query": q["query"],
+                "passed": is_passed,
+                "llm_answer": answer
+            })
+
+            if is_passed:
                 logger.info("\tSUCCESS: LLM confirmed.")
-                successful_retrievals +=1
+                successful_retrievals += 1
             else:
                 logger.info("\tFAIL: LLM denied")
                 logger.info(f"\tExpected to find: {q['expected_answer'][:100]}...")
-                logger.info("-"*30)
+                logger.info("-" * 30)
                 
                 if ENABLE_SEMANTIC_CACHE:
                     remove_cache_entry(q['query'])
 
         except Exception as e:
             logger.error(f"\tERROR: {str(e)}")
+            question_results.append({
+                "id": q.get("id"),
+                "query": q["query"],
+                "passed": False,
+                "llm_answer": f"ERROR: {str(e)}"
+            })
 
-    precision = (successful_retrievals/len(questions)) * 100
+    precision = (successful_retrievals / len(questions)) * 100 if questions else 0.0
+    threshold = 80.0
+    passed_threshold = precision >= threshold
+
     logger.info(f"\nFinal score: Precision@4 - {precision:.1f}%")
     logger.info(f"({successful_retrievals} out of {len(questions)} retrieved correctly)")
+    
+    run_id = save_eval_run(
+        db_path=EVAL_DB_PATH,
+        main_model=MAIN_LLM_MODEL,
+        eval_model=EVAL_LLM_MODEL,
+        routing_method=ROUTING_METHOD,
+        k_retrieval=K_EVALUATION,
+        precision_score=precision,
+        total_questions=len(questions),
+        successful_questions=successful_retrievals,
+        passed_threshold=passed_threshold,
+        question_results=question_results
+    )
+    logger.info(f"Saved evaluation metrics to DB (Run ID #{run_id} at '{EVAL_DB_PATH}')")
 
-    threshold = 80.0
-    if precision < threshold:
+    # Write Markdown summary to GitHub Actions Step Summary (if running in CI)
+    github_summary_path = os.getenv("GITHUB_STEP_SUMMARY")
+    if github_summary_path:
+        try:
+            with open(github_summary_path, "a", encoding="utf-8") as f:
+                f.write(f"## 📊 RAG Pipeline Evaluation Summary\n\n")
+                f.write(f"- **Precision@4 Score:** `{precision:.1f}%`\n")
+                f.write(f"- **Main Model:** `{MAIN_LLM_MODEL}`\n")
+                f.write(f"- **Routing Method:** `{ROUTING_METHOD}`\n")
+                f.write(f"- **Status:** `{'Passed ✅' if passed_threshold else 'Failed ❌'}`\n\n")
+                
+                f.write("| ID | Query | Status |\n")
+                f.write("|---|---|---|\n")
+                for res in question_results:
+                    status = "✅ PASS" if res["passed"] else "❌ FAIL"
+                    f.write(f"| {res.get('id', '-')} | {res['query']} | {status} |\n")
+            logger.info("Wrote evaluation summary to GitHub Step Summary.")
+        except Exception as e:
+            logger.warning(f"Could not write to GITHUB_STEP_SUMMARY: {e}")
+
+    if not passed_threshold:
         logger.error(f"Evaluation failed! Precision {precision:.1f}% is below the {threshold}% threshold.")
         sys.exit(1)
     else:

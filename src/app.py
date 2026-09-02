@@ -27,6 +27,9 @@ def main():
     serve_parser = subparsers.add_parser("serve", help="Run the FastAPI REST API server")
     serve_parser.add_argument("--host", default="0.0.0.0", help="Host to bind (default: 0.0.0.0)")
     serve_parser.add_argument("--port", type=int, default=8000, help="Port to bind (default: 8000)")
+
+    history_parser = subparsers.add_parser("history", help="View past evaluation runs")
+    history_parser.add_argument("--limit", type=int, default=10, help="Number of past runs to display")
     
     args = parser.parse_args() 
 
@@ -67,7 +70,23 @@ def main():
         import uvicorn
         logger.info(f"Starting API server on {args.host}:{args.port}")
         uvicorn.run("src.api:app", host=args.host, port=args.port, reload=False)
-        
+
+    elif args.command == "history":
+        from src.eval_db import get_eval_history
+        from src.config import EVAL_DB_PATH
+        history = get_eval_history(EVAL_DB_PATH, limit=args.limit)
+        if not history:
+            print("No evaluation runs found in history.")
+        else:
+            print(f"\n--- Last {len(history)} Evaluation Runs ---")
+            print(f"{'ID':<4} {'Timestamp':<25} {'Model':<20} {'Routing':<10} {'Score':<8} {'Passed':<6}")
+            print("-" * 78)
+            for run in history:
+                ts = run['timestamp'][:19].replace('T', ' ')
+                score = f"{run['precision_score']:.1f}%"
+                passed = "YES" if run['passed_threshold'] else "NO"
+                print(f"{run['id']:<4} {ts:<25} {run['main_model']:<20} {run['routing_method']:<10} {score:<8} {passed:<6}")    
+            
     else:
         parser.print_help()
 

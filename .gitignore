@@ -5,6 +5,8 @@ __pycache__/
 .venv/
 .plan.md
 chroma_db/*
+*.db
+baseline/*.db
 *.log
 clusters/
 s_cache/

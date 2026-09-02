@@ -46,3 +46,7 @@ PREFERRED_MODELS = {
     "groq": ["openai/gpt-oss-20b", "qwen/qwen3.6-27b"],
     "gemini": ["gemini-2.5-flash", "gemini-3.5-flash"],
 }
+
+# Baseline configuration
+EVAL_QUESTIONS_PATH = "baseline/questions.json"
+EVAL_DB_PATH = "baseline/eval_history.db"
