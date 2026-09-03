@@ -1,8 +1,6 @@
 import os
 import joblib
 import numpy as np
-from collections import Counter
-from sklearn.cluster import KMeans
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 
@@ -13,47 +11,81 @@ from src.logging_config import setup_logging
 logger = setup_logging(__name__)
 CENTROIDS_PATH = os.path.join(CLUSTERS_DIR, "source_centroids.joblib")
 
-def train_clustering():
-    """Calculate and save the mean embedding (centroid) for each document source."""
-    logger.info("Loading vector database for clustering...")
-    vectorstore = create_or_get_vectorstore()
-
-    # Extract data
-    collection = vectorstore._collection
-    data = collection.get(include=["embeddings", "metadatas"])
-
-    embeddings = data["embeddings"]
-    metadatas = data["metadatas"]
-
-    if embeddings is None:
-        logger.error("No embeddings found in the vectorstore. Run index first.")
-        return
-        
-    logger.info(f"Loaded {len(embeddings)} embeddings. Grouping by source")
-
-    # Group embeddings
-    source_embeddings = {}
-    for i, meta in enumerate(metadatas):
-        source = meta.get("source", "unknown")
-        if source not in source_embeddings:
-            source_embeddings[source] = []
-        source_embeddings[source].append(embeddings[i])
-
-    # Calculate centroid
-    centroids = {}
-    for source, emb_list in source_embeddings.items():
-        arr = np.array(emb_list)
-        centroids[source] = np.mean(arr, axis=0)
-        logger.info(f"Source '{source}': Centroid computed from {len(emb_list)} chunks")
-  
-    # Save models
+def train_clustering(changed_sources: set = None, force_rebuild: bool = False):
+    """Calculate and update the mean embedding (centroid) for document sources.
+    
+    Args:
+        changed_sources: Set of filenames that were added, modified, or deleted.
+        force_rebuild: If True, recompute centroids for all documents from scratch.
+    """
     os.makedirs(CLUSTERS_DIR, exist_ok=True)
-    joblib.dump(centroids, CENTROIDS_PATH)
-    logger.info("Source centroids saved successfully")    
 
+    # No changes -> skip
+    if changed_sources is not None and len(changed_sources) == 0 and os.path.exists(CENTROIDS_PATH) and not force_rebuild:
+        logger.info("No document changes detected. Source centroids are up to date.")
+        return
+
+    logger.info("Updating document source centroids...")
+    vectorstore = create_or_get_vectorstore()
+    collection = vectorstore._collection
+
+    # Full rebuild for all sources
+    if force_rebuild or not os.path.exists(CENTROIDS_PATH) or changed_sources is None:
+        data = collection.get(include=["embeddings", "metadatas"])
+        embeddings = data.get("embeddings")
+        metadatas = data.get("metadatas")
+
+        if embeddings is None or len(embeddings) == 0:
+            logger.warning("No embeddings found in vectorstore. Cannot compute centroids.")
+            return
+
+        source_embeddings = {}
+        for i, meta in enumerate(metadatas):
+            source = meta.get("source", "unknown")
+            if source not in source_embeddings:
+                source_embeddings[source] = []
+            source_embeddings[source].append(embeddings[i])
+
+        centroids = {}
+        for source, emb_list in source_embeddings.items():
+            centroids[source] = np.mean(np.array(emb_list), axis=0)
+            logger.info(f"Source '{source}': Centroid computed from {len(emb_list)} chunks")
+
+        joblib.dump(centroids, CENTROIDS_PATH)
+        logger.info(f"Saved {len(centroids)} source centroids to {CENTROIDS_PATH}")
+
+        if GENERATE_VISUALIZATION:
+            sources = [m.get("source", "unknown") for m in metadatas]
+            visualize_clusters(np.array(embeddings), sources)
+        return
+
+    # Incremental update for changed sources only
+    try:
+        centroids = joblib.load(CENTROIDS_PATH)
+    except Exception:
+        centroids = {}
+
+    for source in changed_sources:
+        data = collection.get(where={"source": source}, include=["embeddings"])
+        embeddings = data.get("embeddings")
+        if embeddings is not None and len(embeddings) > 0:
+            centroids[source] = np.mean(np.array(embeddings), axis=0)
+            logger.info(f"Source '{source}': Updated centroid from {len(embeddings)} chunks")
+        else:
+            if source in centroids:
+                del centroids[source]
+                logger.info(f"Source '{source}': Removed centroid (document deleted)")
+
+    joblib.dump(centroids, CENTROIDS_PATH)
+    logger.info(f"Updated source centroids saved successfully. Total active sources: {len(centroids)}")
+    
     if GENERATE_VISUALIZATION:
-        sources = [m.get("source", "unknown") for m in metadatas]
-        visualize_clusters(np.array(embeddings), sources)    
+        data = collection.get(include=["embeddings", "metadatas"])
+        all_embeddings = data.get("embeddings")
+        all_metadatas = data.get("metadatas")
+        if all_embeddings is not None and len(all_embeddings) > 0:
+            sources = [m.get("source", "unknown") for m in all_metadatas]
+            visualize_clusters(np.array(all_embeddings), sources)
 
 def visualize_clusters(X, sources):
     """Generate a 2D visualization using t-SNE."""

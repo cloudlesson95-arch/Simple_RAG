@@ -10,6 +10,8 @@ Every component was added incrementally with a clear engineering rationale and p
 | Skill | Implementation |
 |---|---|
 | **RAG fundamentals** | Document chunking, embedding, vector search, context-stuffed LLM prompting |
+| **Incremental Ingestion** | Dynamic SHA-256 hash tracking, targeted ChromaDB vector updates, batching, and incremental centroid retraining |
+| **Unified Storage** | Single SQLite database (`rag.db`) for evaluation history and document registry |
 | **Agentic routing** | Pydantic-based structured output to route queries to the correct data source |
 | **Classical ML routing** | Replacing LLM router with Logistic Regression (needs retrieval) & Nearest Centroid (source selection) |
 | **Self-correction** | Automatic query rephrasing when retrieval returns insufficient context |
@@ -87,18 +89,20 @@ Simple_RAG/
 │   ├── classifier.py       # Logistic Regression classifier for retrieval necessity
 │   ├── clustering.py       # Nearest Centroid classifier & t-SNE visualization
 │   ├── config.py            # All hyperparameters and settings
+│   ├── doc_registry.py      # SQLite document tracking registry (SHA-256, chunk counts)
 │   ├── eval_db.py           # SQLite database wrapper for tracking evaluation history
 │   ├── evaluator.py         # Evaluation pipeline with LLM-as-judge & result logger
 │   ├── logging_config.py    # Centralized logging setup
 │   ├── rag_agent.py         # Router (LLM / Classical) + self-correction agent
 │   ├── semantic_cache.py    # Sub-millisecond vector similarity caching
 │   ├── utils.py             # LLM factory (Groq / Gemini)
-│   └── vectorstore.py       # Chunking, embedding, ChromaDB operations
+│   └── vectorstore.py       # Incremental delta scanning, chunking, embedding, ChromaDB
 ├── clusters/                # Saved ML models & t-SNE visualization PNG
 ├── s_cache/                 # Persisted semantic cache store
-├── data/                    # Source documents (3 files, different scales)
+├── data/                    # Source documents (.txt, .md, .json)
 ├── baseline/
-│   └── questions.json       # 10 structured test questions with expected context & answers
+│   └── questions.json       # Structured test questions with expected context & answers
+├── rag.db                   # Consolidated SQLite database (evaluation history + doc registry)
 ├── n8n/
 │   └── workflow.json        # Exported N8N visual workflow pipeline
 ├── .github/workflows/
@@ -138,13 +142,17 @@ cp .env.example .env
 # Edit .env and add your GROQ_API_KEY and GOOGLE_API_KEY
 ```
 
-### Build the Vector Index
+### Build / Sync the Vector Index
 
 ```bash
+# Incremental sync (only indexes added, modified, or deleted documents)
 python -m src.app index
+
+# Force full rebuild (wipes ChromaDB and SQLite registry)
+python -m src.app index --rebuild
 ```
 
-This loads 3 documents from `data/`, chunks them (500 tokens, 50 overlap), embeds them using `all-MiniLM-L6-v2` (local, no API needed), and stores them in ChromaDB.
+Scans `data/` for `.txt`, `.md`, and `.json` documents, computes SHA-256 hashes to detect changes, chunks them (500 tokens, 50 overlap), embeds them in batches of 1,000 vectors using `all-MiniLM-L6-v2`, and updates ChromaDB & `rag.db`.
 
 ### Query the System
 
@@ -239,7 +247,7 @@ All hyperparameters are centralized in [`src/config.py`](src/config.py):
 | `CACHE_SIMILARITY_THRESHOLD` | `0.95` | Cosine similarity threshold for semantic cache hit |
 | `SEMANTIC_CACHE_DIR` | `s_cache` | Directory where semantic cache is persisted |
 | `EVAL_QUESTIONS_PATH` | `baseline/questions.json` | Path to benchmark JSON test cases |
-| `EVAL_DB_PATH` | `baseline/eval_history.db` | Path to SQLite evaluation history database |
+| `DB_PATH` | `rag.db` | Consolidated SQLite database (eval runs + doc registry) |
 
 ## Development Journey
 

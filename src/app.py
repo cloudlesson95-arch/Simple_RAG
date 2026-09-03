@@ -34,23 +34,17 @@ def main():
     args = parser.parse_args() 
 
     if args.command == "index":
-        from src.vectorstore import load_and_chunk_documents, create_or_get_vectorstore
+        from src.vectorstore import sync_incremental_index
         from src.clustering import train_clustering
         from src.classifier import train_classifier
         
-        if args.rebuild:
-            logger.info(f"Rebuilding index - removing existing database at path: {CHROMA_PERSIST_DIR}")
-            if os.path.exists(CHROMA_PERSIST_DIR):
-                shutil.rmtree(CHROMA_PERSIST_DIR)
-                logger.info(f"Removed {CHROMA_PERSIST_DIR}")
+        logger.info(f"Running document index sync (rebuild={args.rebuild})...")
+        vectorstore, changed_sources = sync_incremental_index(force_rebuild=args.rebuild)
         
-        chunks = load_and_chunk_documents()
-        vectorstore = create_or_get_vectorstore(chunks)
-        logger.info("Index created/loaded successfully")
-
-        logger.info("Training classical ML routing models...")
-        train_clustering()
+        logger.info("Updating classical ML routing models...")
+        train_clustering(changed_sources=changed_sources, force_rebuild=args.rebuild)
         train_classifier()
+        logger.info("Index sync and ML model update completed.")
         
     elif args.command == "query":
         from src.vectorstore import create_or_get_vectorstore
