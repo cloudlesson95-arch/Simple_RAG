@@ -49,4 +49,5 @@ PREFERRED_MODELS = {
 
 # Baseline configuration
 EVAL_QUESTIONS_PATH = "baseline/questions.json"
-EVAL_DB_PATH = "baseline/eval_history.db"
+
+DB_PATH = "rag.db"

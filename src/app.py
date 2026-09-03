@@ -73,8 +73,8 @@ def main():
 
     elif args.command == "history":
         from src.eval_db import get_eval_history
-        from src.config import EVAL_DB_PATH
-        history = get_eval_history(EVAL_DB_PATH, limit=args.limit)
+        from src.config import DB_PATH
+        history = get_eval_history(DB_PATH, limit=args.limit)
         if not history:
             print("No evaluation runs found in history.")
         else:

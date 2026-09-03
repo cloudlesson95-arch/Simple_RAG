@@ -3,7 +3,7 @@ import sys
 import json
 from src.config import (
     K_EVALUATION, MAIN_LLM_MODEL, EVAL_LLM_MODEL, ROUTING_METHOD,
-    ENABLE_SEMANTIC_CACHE, EVAL_QUESTIONS_PATH, EVAL_DB_PATH
+    ENABLE_SEMANTIC_CACHE, EVAL_QUESTIONS_PATH, DB_PATH
 )
 from src.utils import create_llm
 from src.vectorstore import create_or_get_vectorstore
@@ -96,7 +96,7 @@ def run_evaluation():
     logger.info(f"({successful_retrievals} out of {len(questions)} retrieved correctly)")
     
     run_id = save_eval_run(
-        db_path=EVAL_DB_PATH,
+        db_path=DB_PATH,
         main_model=MAIN_LLM_MODEL,
         eval_model=EVAL_LLM_MODEL,
         routing_method=ROUTING_METHOD,
@@ -107,10 +107,10 @@ def run_evaluation():
         passed_threshold=passed_threshold,
         question_results=question_results
     )
-    logger.info(f"Saved evaluation metrics to DB (Run ID #{run_id} at '{EVAL_DB_PATH}')")
+    logger.info(f"Saved evaluation metrics to DB (Run ID #{run_id} at '{DB_PATH}')")
 
     # Write evaluation summary report to a local markdown file
-    summary_path = os.path.join(os.path.dirname(EVAL_DB_PATH), "summary.md")
+    summary_path = os.path.join(os.path.dirname(DB_PATH), "summary.md")
     try:
         with open(summary_path, "w", encoding="utf-8") as f:
             f.write(f"## 📊 RAG Pipeline Evaluation Summary\n\n")
