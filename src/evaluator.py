@@ -110,7 +110,7 @@ def run_evaluation():
     logger.info(f"Saved evaluation metrics to DB (Run ID #{run_id} at '{DB_PATH}')")
 
     # Write evaluation summary report to a local markdown file
-    summary_path = os.path.join(os.path.dirname(DB_PATH), "summary.md")
+    summary_path = "baseline/summary.md"
     try:
         with open(summary_path, "w", encoding="utf-8") as f:
             f.write(f"## 📊 RAG Pipeline Evaluation Summary\n\n")
